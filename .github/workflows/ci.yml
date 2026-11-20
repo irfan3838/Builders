@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GITLEAKS_VERSION: 8.18.4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Block committed secrets and state files
+        run: |
+          set -euo pipefail
+          bad=$(git ls-files | grep -E '(^|/)\.env(\..+)?$|\.tfstate(\..+)?$|\.pem$|\.key$|\.p12$|(^|/)credentials\.json$' | grep -v -E '(^|/)\.env\.example$' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Forbidden files are tracked:"
+            echo "$bad"
+            exit 1
+          fi
+          echo "No forbidden files tracked."
+
+      - name: Check for merge-conflict markers
+        run: |
+          set -euo pipefail
+          if git grep -n -I -E '^(<<<<<<< |>>>>>>> |=======$)' -- . ':!*.md'; then
+            echo "::error::Unresolved merge-conflict markers found."
+            exit 1
+          fi
+          echo "No conflict markers."
+
+      - name: Check for large files (>5 MB)
+        run: |
+          set -euo pipefail
+          large=$(git ls-files -z | xargs -0 -r du -k 2>/dev/null | awk '$1 > 5120 {print $2}')
+          if [ -n "$large" ]; then
+            echo "::error::Files over 5 MB are tracked (use S3 or Git LFS):"
+            echo "$large"
+            exit 1
+          fi
+          echo "No large files."
+
+      - name: Secret scan (gitleaks)
+        run: |
+          set -euo pipefail
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks detect --source . --redact --verbose --exit-code 1

@@ -1,0 +1,9 @@
+[project]
+name = "builders"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "boto3>=1.44.7",
+    "openai>=3.57.0",
+    "openai-agents>=0.25.0",
+]
