@@ -60,6 +60,7 @@ terraform -chdir=infra/terraform apply -var image_tag=$TAG
 ## Email and Google Meet
 
 - `EMAIL_ALLOWED_RECIPIENTS` (tfvars `app_env`): a comma list of addresses, or `*` to email any address on file.
+- `OPENAI_VOICE_NAME` / `OPENAI_VOICE_SPEED` (tfvars `app_env`): live voice and speaking pace (0.25-1.5, default 1.15). If the live API rejects `speed`, the session is retried without it and a warning is logged.
 - Google Calendar: one-time `uv run python -m scripts.google_oauth` (needs `.secrets/google_client.json`, a Desktop
   OAuth client with the `calendar.events` scope) writes `GOOGLE_CLIENT_ID/SECRET/REFRESH_TOKEN` to `.env`.
   `GOOGLE_CLIENT_ID` goes in tfvars `app_env`; `scripts.aws_put_secrets` copies the secret and refresh token.

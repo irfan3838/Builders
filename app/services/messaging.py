@@ -24,8 +24,13 @@ log = logging.getLogger("purser.messaging")
 
 def email_plan(user: User) -> tuple[str | None, str]:
     """Where an email to this user would go, and whether it is deliverable in this demo."""
+    return address_plan(user.notify_email)
+
+
+def address_plan(address: str | None) -> tuple[str | None, str]:
+    """Whether an email to this address is deliverable in this demo (same rule for colleagues and outsiders)."""
     st = get_settings()
-    target = (user.notify_email or "").strip().lower() or None
+    target = (address or "").strip().lower() or None
     if not target:
         return None, "no_email"
     if not st.email_enabled:
@@ -36,9 +41,18 @@ def email_plan(user: User) -> tuple[str | None, str]:
 
 
 async def compose(s: AsyncSession, actor: Actor, recipients: list[User], *, kind: str, subject: str, body: str,
-                  channels: list[str], receipt_id: int | None) -> dict:
+                  channels: list[str], receipt_id: int | None, external_emails: list[str] | None = None) -> dict:
+    """external_emails are people outside the workspace: email only (they have no Purser inbox)."""
     batch = uuid.uuid4().hex
     counts = {"inbox": 0, "email_queued": 0, "email_skipped": 0}
+    for addr in external_emails or []:
+        to, verdict = address_plan(addr)
+        ok = verdict == "deliverable"
+        s.add(Message(workspace_id=actor.workspace_id, ref="pending", kind=kind, channel="email", sender_id=actor.user_id,
+                      recipient_user_id=None, email_to=to, subject=subject, body=body,
+                      status="queued" if ok else "skipped", status_detail=None if ok else verdict, batch_id=batch,
+                      receipt_id=receipt_id))
+        counts["email_queued" if ok else "email_skipped"] += 1
     for u in recipients:
         if "inbox" in channels:
             s.add(Message(workspace_id=actor.workspace_id, ref="pending", kind=kind, channel="inbox", sender_id=actor.user_id,

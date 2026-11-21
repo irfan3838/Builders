@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, BadRequestError
 
 from app import db, events
 from app.actor import Actor
@@ -23,7 +23,9 @@ Match the user's language: Hindi, English or Hinglish.
 For ANY request about budgets, bills, claims, receipts, invoices, payments, approvals or documents, delegate to the backend. This includes "yes", "haan", "no", "cancel" and corrections, because those answer a pending question.
 Speak only what the backend returns. Never state an amount, name, date or status the backend did not give you.
 Never say something was approved, submitted or recorded unless the backend said so.
-While waiting for the backend, say at most a short filler like "ek second".
+Speak at a brisk, natural conversational pace, especially in Hindi and Hinglish; do not drag words or pause between phrases.
+While waiting for the backend, say one short, natural filler in the user's language, picking a different one each time (for example "ek second", "bas ek minute", "haan, dekhti hoon", "abhi batati hoon", "ruko zara", "one moment", "let me check"). Never repeat the filler you used on the previous turn, and say only one per turn. On yes, no or cancel turns keep it to a word or skip it.
+When the backend reply ends with a suggested next step or question, speak it exactly as given.
 """
 
 
@@ -34,15 +36,20 @@ def client() -> AsyncOpenAI:
     return _client
 
 
-def session_config(wake_text: str | None = None) -> dict:
+def session_config(wake_text: str | None = None, *, with_speed: bool = True) -> dict:
     if wake_text:
         opener = (f"The user woke you by saying 'Purser' and continued: «{wake_text[:300]}». "
                   "Treat that as their request: delegate it to the backend now and speak the answer.")
     else:
         opener = "The user just said your name to wake you. Greet them in at most three words, in Hinglish, e.g. 'Haan ji, boliye?'"
+    st = get_settings()
+    output: dict = {"voice": st.openai_voice_name}
+    if with_speed and st.openai_voice_speed and st.openai_voice_speed != 1.0:
+        output["speed"] = max(0.25, min(1.5, st.openai_voice_speed))
     return {
         "input": [{"type": "message", "role": "developer", "content": [{"type": "input_text", "text": opener}]}],
-        "model": get_settings().openai_model_voice,
+        "model": st.openai_model_voice,
+        "audio": {"output": output},
         "instructions": FRONTEND_INSTRUCTIONS,
         "delegation": {"type": "client"},
         "client": {"data_channel": {  # untrusted browser: may only close; receives captions + lifecycle
@@ -160,7 +167,12 @@ class LiveBridge:
 
 
 async def start(actor: Actor, sdp: str, wake_text: str | None = None) -> dict:
-    result = await client().live.create(session=session_config(wake_text), transport={"type": "webrtc", "sdp": sdp})
+    transport = {"type": "webrtc", "sdp": sdp}
+    try:
+        result = await client().live.create(session=session_config(wake_text), transport=transport)
+    except BadRequestError as e:  # the live API may not accept audio.output.speed; never let pacing break voice
+        log.warning("live session rejected speed, retrying without it: %s", str(e)[:200])
+        result = await client().live.create(session=session_config(wake_text, with_speed=False), transport=transport)
     async with db.session_scope() as s:
         from app.models import Conversation
 

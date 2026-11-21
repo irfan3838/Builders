@@ -1,9 +1,13 @@
-// Hands-free wake word ("Purser"), like "Alexa" / "OK Google".
+// Hands-free wake word ("Hey Purser" or just "Purser"), like "Alexa" / "OK Google".
 // Uses the browser's built-in speech recognition (Chrome/Edge). Note: Chrome's recogniser streams audio
 // to the browser vendor's speech service while armed. The wake phrase only opens the Purser session;
 // words heard here are treated as a request, never as a confirmation (the server must hear "yes" itself).
 
-const WAKE = /\b(purser|pursar|purser ji|pursur|perser|parser|pursuer|purse her|pur sir)\b|पर्सर|पर्सार/i;
+// "Hey Purser" first: Chrome often hears it as "hey person / hey parcel / hey pusser", so those near-misses count, but
+// only right after a greeting ("person" or "parcel" in normal speech never wakes Purser). The bare name still works.
+const GREETED = /\b(?:hey|hay|hi|hii|ok|okay|hello)[\s,]+(?:purser|pursar|pursur|perser|parser|pursuer|person|parcel|pusser|purse|prosser|percer|pursa)(?:\s+ji)?\b|(?:हे|है|हाय)\s*(?:पर्सर|पर्सार|पर्सन|पार्सल)/i;
+const BARE = /\b(purser|pursar|purser ji|pursur|perser|pursuer|purse her|pur sir)\b|पर्सर|पर्सार/i;
+export const matchWake = (text: string) => GREETED.exec(text) ?? BARE.exec(text);
 
 type SR = any;
 const Recognition: SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -41,7 +45,7 @@ export class WakeWord {
       if (this.fired) return;
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const text: string = e.results[i][0].transcript;
-        const m = WAKE.exec(text);
+        const m = matchWake(text);
         if (!m) continue;
         const rest = text.slice(m.index + m[0].length).replace(/^[\s,.!?ji]+/i, "").trim();
         clearTimeout(this.settleTimer);

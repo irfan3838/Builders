@@ -14,6 +14,7 @@ export type Caption = { who: Who; text: string; id: number } | null;
 export type ToastKind = "success" | "error" | "info";
 export type Toast = { id: number; kind: ToastKind; text: string; action?: { label: string; run: () => void } };
 export type Priorities = { approvals: number; reimbursements: number; budget_alerts: number; claims_pending: number; unread_mail: number };
+export type Suggestion = { label: string; utterance: string };
 export type UploadItem = { key: string; name: string; size: number; progress: number; status: "uploading" | "reading" | "error" | "done"; error?: string; cancel?: () => void };
 
 /** What the decision strip shows: set by the claim review artifact currently in focus. */
@@ -34,6 +35,7 @@ type Ctx = {
   priorities: Priorities | null; reloadPriorities: () => void;
   decision: Decision; setDecision: (d: Decision) => void;
   uploads: UploadItem[]; setUploads: React.Dispatch<React.SetStateAction<UploadItem[]>>;
+  suggestions: Suggestion[]; setSuggestions: (s: Suggestion[]) => void;
   busy: React.MutableRefObject<number>;
   online: boolean;
 };
@@ -62,6 +64,7 @@ export function PurserProvider({ me, children }: { me: Me; children: ReactNode }
   const [priorities, setPriorities] = useState<Priorities | null>(null);
   const [decision, setDecision] = useState<Decision>(null);
   const [uploads, setUploads] = useState<UploadItem[]>([]);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [online, setOnline] = useState(navigator.onLine);
   const flashTimer = useRef<number | undefined>(undefined);
   const busy = useRef(0);
@@ -75,7 +78,11 @@ export function PurserProvider({ me, children }: { me: Me; children: ReactNode }
 
   const go = useCallback((v: View) => { if (location.hash !== `#/${v}`) location.hash = `/${v}`; setView(v); }, []);
 
-  const addCards = useCallback((incoming: Card[]) => {
+  const addCards = useCallback((all: Card[]) => {
+    // next-step chips are not artifacts: they live under the composer, never in the panel
+    const sugg = all.filter((c) => c.card === "suggestions");
+    if (sugg.length) setSuggestions(((sugg[sugg.length - 1].items || []) as Suggestion[]).slice(0, 3));
+    const incoming = all.filter((c) => c.card !== "suggestions");
     if (!incoming.length) return;
     // within one batch the later card for the same object wins; then newest first, older copies dropped
     const byKey = new Map<string, Card>();
@@ -116,9 +123,9 @@ export function PurserProvider({ me, children }: { me: Me; children: ReactNode }
   const value = useMemo<Ctx>(() => ({
     me, view, go, cards, addCards, removeCard, clearCards, panelOpen, setPanelOpen, bump, refresh,
     baseOrb, setBaseOrb, orb: flash ?? baseOrb, flashOrb, caption, say, toasts, toast, dismissToast,
-    priorities, reloadPriorities, decision, setDecision, uploads, setUploads, busy, online,
+    priorities, reloadPriorities, decision, setDecision, uploads, setUploads, suggestions, setSuggestions, busy, online,
   }), [me, view, go, cards, addCards, removeCard, clearCards, panelOpen, bump, refresh, baseOrb, flash, flashOrb, caption, say, toasts, toast,
-    dismissToast, priorities, reloadPriorities, decision, uploads, online]);
+    dismissToast, priorities, reloadPriorities, decision, uploads, suggestions, online]);
 
   return <PurserContext.Provider value={value}>{children}</PurserContext.Provider>;
 }

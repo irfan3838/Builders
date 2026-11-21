@@ -616,9 +616,16 @@ async def _message_inputs(s, actor, args):
             raise DomainError(NOT_FOUND, f"No one in department '{dept}'.")
     else:
         ids = [int(i) for i in (args.get("user_ids") or [])]
-        if not ids:
-            raise DomainError(VALIDATION, "Choose at least one recipient.")
         recipients = [await people.user(s, actor, i) for i in ids]
+    external = []
+    for e in args.get("external_emails") or []:
+        e = (e or "").strip().lower()
+        if not _EMAIL_RE.match(e):
+            raise DomainError(VALIDATION, f"'{e}' is not a valid email address.")
+        if e not in external:
+            external.append(e)
+    if audience == "person" and not recipients and not external:
+        raise DomainError(VALIDATION, "Choose at least one recipient (a colleague or an email address).")
     recipients = [u for u in recipients if u.id != actor.user_id] or recipients
     subject, body = (args.get("subject") or "").strip(), (args.get("body") or "").strip()
     if not body:
@@ -626,7 +633,9 @@ async def _message_inputs(s, actor, args):
     if len(subject) > 200:
         raise DomainError(VALIDATION, "The subject is too long (max 200 characters); shorten it.")
     channels = [c for c in (args.get("channels") or ["inbox"]) if c in ("inbox", "email")] or ["inbox"]
-    return recipients, subject or body[:60], body, channels, audience
+    if external and "email" not in channels:
+        channels.append("email")  # outsiders have no Purser inbox; email is the only way to reach them
+    return recipients, subject or body[:60], body, channels, audience, external
 
 
 class SendMessage:
@@ -634,14 +643,20 @@ class SendMessage:
 
     async def plan(self, s, actor, args):
         from app.services import messaging
-        recipients, subject, body, channels, audience = await _message_inputs(s, actor, args)
-        names = ", ".join(u.display_name for u in recipients[:5]) + (f" and {len(recipients) - 5} more" if len(recipients) > 5 else "")
-        lines = [f"To: {names} ({len(recipients)} {'person' if len(recipients) == 1 else 'people'}).", f"Subject: {subject}", f"Message: {body}"]
+        recipients, subject, body, channels, audience, external = await _message_inputs(s, actor, args)
+        everyone = [u.display_name for u in recipients] + external
+        names = ", ".join(everyone[:5]) + (f" and {len(everyone) - 5} more" if len(everyone) > 5 else "")
+        lines = [f"To: {names} ({len(everyone)} {'person' if len(everyone) == 1 else 'people'}).", f"Subject: {subject}", f"Message: {body}"]
         if "email" in channels:
             verdicts = [messaging.email_plan(u)[1] for u in recipients]
             ok = verdicts.count("deliverable")
-            lines.append(f"Email: {ok} will be emailed; {len(recipients) - ok} get the inbox copy only"
-                         + (" (email not configured)." if "email_not_configured" in verdicts else " (no allow-listed address)." if ok < len(recipients) else "."))
+            if recipients:
+                lines.append(f"Email: {ok} will be emailed; {len(recipients) - ok} get the inbox copy only"
+                             + (" (email not configured)." if "email_not_configured" in verdicts else " (no allow-listed address)." if ok < len(recipients) else "."))
+            for e in external:
+                v = messaging.address_plan(e)[1]
+                lines.append(f"Email to {e}: " + ("will be sent." if v == "deliverable" else
+                             "cannot be sent (email not configured)." if v == "email_not_configured" else "cannot be sent (not on the allow-list)."))
         lines.append("Channels: " + " + ".join("Purser inbox" if c == "inbox" else "email" for c in channels) + ".")
         kind = "announcement" if audience in ("all", "department") else "message"
         return Plan("Send announcement" if kind == "announcement" else "Send message", lines,
@@ -649,13 +664,14 @@ class SendMessage:
 
     async def execute(self, s, actor, args, receipt_id):
         from app.services import messaging
-        recipients, subject, body, channels, audience = await _message_inputs(s, actor, args)
+        recipients, subject, body, channels, audience, external = await _message_inputs(s, actor, args)
         kind = "announcement" if audience in ("all", "department") else "message"
-        sent = await messaging.compose(s, actor, recipients, kind=kind, subject=subject, body=body, channels=channels, receipt_id=receipt_id)
-        await audit.record(s, actor, f"{kind}.sent", record_type="message", after={"subject": subject, "recipients": len(recipients),
+        sent = await messaging.compose(s, actor, recipients, kind=kind, subject=subject, body=body, channels=channels,
+                                       receipt_id=receipt_id, external_emails=external)
+        await audit.record(s, actor, f"{kind}.sent", record_type="message", after={"subject": subject, "recipients": len(recipients) + len(external),
                            **{k: v for k, v in sent.items() if k != "batch_id"}}, receipt_id=receipt_id)
         detail = f"{sent['inbox']} inbox" + (f", {sent['email_queued']} email queued, {sent['email_skipped']} email skipped" if "email" in channels else "")
-        return Execution(f"{kind.capitalize()} '{subject}' sent to {len(recipients)} ({detail}).", [{"type": "messages", **sent}])
+        return Execution(f"{kind.capitalize()} '{subject}' sent to {len(recipients) + len(external)} ({detail}).", [{"type": "messages", **sent}])
 
 
 # ---------------------------------------------------------------- meetings (Google Calendar + Meet)

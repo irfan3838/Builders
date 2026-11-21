@@ -9,6 +9,9 @@ import { useFx } from "../shared/FxLayer";
 
 const IDLE_CLOSE_MS = 30_000;
 const HANDSFREE_KEY = "purser.handsfree";
+// Hands-free ("Hey Purser") is on by default where the browser supports it; "0" means the user turned it off.
+const handsFreeOn = () => { try { return wakeSupported && localStorage.getItem(HANDSFREE_KEY) !== "0"; } catch { return wakeSupported; } };
+const storeHandsFree = (on: boolean) => { try { localStorage.setItem(HANDSFREE_KEY, on ? "1" : "0"); } catch { /* private mode */ } };
 export const ACCEPT = ["application/pdf", "image/jpeg", "image/png", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
 export const ACCEPT_ATTR = "application/pdf,image/jpeg,image/png,.docx," + ACCEPT[3];
 const MAX_BYTES = 25 * 1024 * 1024;
@@ -50,7 +53,7 @@ export function PurserVoiceController({ children }: { children: ReactNode }) {
   const { fly } = useFx();
   const [ready, setReady] = useState(false);
   const [voice, setVoice] = useState<VoiceMode>("off");
-  const [handsFree, setHandsFreeState] = useState(() => wakeSupported && !!localStorage.getItem(HANDSFREE_KEY));
+  const [handsFree, setHandsFreeState] = useState(handsFreeOn);
   const [sending, setSending] = useState(false);
   const [lastFailed, setLastFailed] = useState<string | null>(null);
   const live = useRef<LiveVoice | null>(null);
@@ -58,7 +61,7 @@ export function PurserVoiceController({ children }: { children: ReactNode }) {
   const idleTimer = useRef<number | undefined>(undefined);
   const abort = useRef<AbortController | null>(null);
   const turnsInFlight = useRef(0);
-  const { setBaseOrb, say, addCards, flashOrb, toast, refresh, busy } = P;
+  const { setBaseOrb, say, addCards, flashOrb, toast, refresh, busy, setSuggestions } = P;
 
   // ---- audio level for the orb: mic while listening, Purser's voice while speaking
   const audio = useRef<{ ctx?: AudioContext; an?: AnalyserNode; src?: MediaStreamAudioSourceNode; stream?: MediaStream; buf: Uint8Array<ArrayBuffer> }>({ buf: new Uint8Array(256) });
@@ -101,7 +104,7 @@ export function PurserVoiceController({ children }: { children: ReactNode }) {
       es.onmessage = (m) => {
         const ev = JSON.parse(m.data);
         if (ev.type === "card") addCards([ev]);
-        else if (ev.type === "user_turn") { turnsInFlight.current++; busy.current++; setSending(true); }
+        else if (ev.type === "user_turn") { setSuggestions([]); turnsInFlight.current++; busy.current++; setSending(true); }
         else if (ev.type === "assistant_turn") {
           turnsInFlight.current = Math.max(0, turnsInFlight.current - 1);
           busy.current = Math.max(0, busy.current - 1);
@@ -113,12 +116,12 @@ export function PurserVoiceController({ children }: { children: ReactNode }) {
     }).catch((e) => { if (!closed) { toast("error", `Could not start a Purser session: ${e.message}`, { label: "Retry", run: open }); } });
     open();
     return () => { closed = true; es?.close(); };
-  }, [addCards, say, refresh, toast, busy]);
+  }, [addCards, say, refresh, toast, busy, setSuggestions]);
 
   // ---- live voice session + wake word
   const sleep = useCallback(() => {
     clearTimeout(idleTimer.current);
-    if (wakeSupported && localStorage.getItem(HANDSFREE_KEY)) { setVoice("asleep"); wake.current?.start(); } else setVoice("off");
+    if (handsFreeOn()) { setVoice("asleep"); wake.current?.start(); } else setVoice("off");
   }, []);
 
   const touch = useCallback(() => {
@@ -155,9 +158,18 @@ export function PurserVoiceController({ children }: { children: ReactNode }) {
   }, [say, sleep, touch, flashOrb, toast]);
 
   useEffect(() => {
-    wake.current = new WakeWord((rest) => wakeUp(rest), (msg) => { localStorage.removeItem(HANDSFREE_KEY); setHandsFreeState(false); setVoice("denied"); toast("error", msg); });
-    if (wakeSupported && localStorage.getItem(HANDSFREE_KEY)) { setVoice("asleep"); wake.current.start(); }
-    return () => { wake.current?.stop(); live.current?.stop(); };
+    wake.current = new WakeWord((rest) => wakeUp(rest), () => {
+      // Usually no mic permission yet: ask once, with a click (browsers need a user gesture for the prompt).
+      storeHandsFree(false); setHandsFreeState(false); setVoice("off");  // ask once, not on every load
+      toast("info", "Say “Hey Purser” to talk hands-free. Allow the microphone to turn it on.", { label: "Enable mic", run: () => setHandsFreeRef.current(true) });
+    });
+    if (handsFreeOn()) { setVoice("asleep"); wake.current.start(); }
+    // Chrome stops recognition in background tabs; re-arm when the tab is visible again.
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && handsFreeOn() && !live.current?.active) { wake.current?.stop(); wake.current?.start(); setVoice("asleep"); }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { document.removeEventListener("visibilitychange", onVisible); wake.current?.stop(); live.current?.stop(); };
   }, [wakeUp, toast]);
 
   const setHandsFree = useCallback(async (on: boolean) => {
@@ -165,13 +177,15 @@ export function PurserVoiceController({ children }: { children: ReactNode }) {
       if (!wakeSupported) { toast("info", "Hands-free wake word needs Chrome or Edge. Tap the orb to talk instead."); return; }
       try { (await navigator.mediaDevices.getUserMedia({ audio: true })).getTracks().forEach((t) => t.stop()); }
       catch { setVoice("denied"); toast("error", "Microphone access is blocked. Allow it in the browser's site settings."); return; }
-      localStorage.setItem(HANDSFREE_KEY, "1"); setHandsFreeState(true);
+      storeHandsFree(true); setHandsFreeState(true);
       if (!live.current?.active) { setVoice("asleep"); wake.current?.start(); }
     } else {
-      localStorage.removeItem(HANDSFREE_KEY); setHandsFreeState(false); wake.current?.stop();
+      storeHandsFree(false); setHandsFreeState(false); wake.current?.stop();
       if (!live.current?.active) setVoice("off");
     }
   }, [toast]);
+  const setHandsFreeRef = useRef(setHandsFree);
+  setHandsFreeRef.current = setHandsFree;
 
   const toggleVoice = useCallback(() => {
     if (live.current?.active) { live.current.stop(); flashOrb("cancelled"); return; }
@@ -183,6 +197,7 @@ export function PurserVoiceController({ children }: { children: ReactNode }) {
     const t = text.trim();
     if (!t || !ready) return false;
     say("user", t);
+    setSuggestions([]);
     setLastFailed(null);
     fly({ kind: "trail", from, to: "#purser-orb" });
     const ctl = new AbortController();
@@ -204,7 +219,7 @@ export function PurserVoiceController({ children }: { children: ReactNode }) {
       abort.current = null;
       if (!turnsInFlight.current) setSending(false);
     }
-  }, [ready, say, fly, addCards, refresh, flashOrb, busy]);
+  }, [ready, say, fly, addCards, refresh, flashOrb, busy, setSuggestions]);
 
   const cancel = useCallback(() => { abort.current?.abort(); }, []);
 
@@ -219,6 +234,7 @@ export function PurserVoiceController({ children }: { children: ReactNode }) {
       P.setPanelOpen(true);
       fly({ kind: "sheet", from, to: "#artifact-panel" });
       say("app", `Reading ${f.name}…`);
+      P.setSuggestions([]);
       busy.current++; touch(); setSending(true);
       const patch = (p: Partial<{ progress: number; status: "uploading" | "reading" | "error" | "done"; error: string }>) =>
         P.setUploads((u) => u.map((x) => (x.key === key ? { ...x, ...p } : x)));

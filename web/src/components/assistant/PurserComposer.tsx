@@ -1,13 +1,13 @@
 // PurserComposer: type, attach, speak, send. Enter sends, Shift+Enter adds a line, Escape cancels the turn in flight.
 import { AnimatePresence, motion } from "motion/react";
-import { FileText, Keyboard, Mic, MicOff, Paperclip, RotateCcw, SendHorizontal, Square, X } from "lucide-react";
+import { FileText, Keyboard, Sparkles, Mic, MicOff, Paperclip, RotateCcw, SendHorizontal, Square, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { usePurser } from "../../state/store";
 import { ACCEPT_ATTR, useAssistant } from "./PurserVoiceController";
 
 export default function PurserComposer() {
   const A = useAssistant();
-  const { uploads, setUploads } = usePurser();
+  const { uploads, setUploads, suggestions } = usePurser();
   const [text, setText] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const ta = useRef<HTMLTextAreaElement>(null);
@@ -41,6 +41,19 @@ export default function PurserComposer() {
 
   return (
     <div className="composer-row">
+      <AnimatePresence>
+        {suggestions.length > 0 && !A.sending && (
+          <motion.div className="suggest-row" role="group" aria-label="Suggested next steps"
+            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} transition={{ duration: 0.22 }}>
+            {suggestions.map((sg) => (
+              <button key={sg.utterance} className="suggest-chip" title={sg.utterance} aria-label={`Suggested: ${sg.utterance}`}
+                onClick={(e) => A.send(sg.utterance, e.currentTarget)} disabled={!A.ready}>
+                <Sparkles size={13} aria-hidden="true" /><span>{sg.label}</span>
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
       <motion.div ref={box} className="composer glass" layout transition={{ duration: 0.3 }}
         onDragOver={(e) => e.preventDefault()}>
         <div className="chips" aria-live="polite">

@@ -8,12 +8,12 @@ from agents import Agent, ModelSettings, RunContextWrapper
 from openai.types.shared import Reasoning
 
 from app.agent.context import PurserContext
-from app.agent.tools import budget_months, charts, contracts, finance, intake, people, proposals, revenue
+from app.agent.tools import budget_months, charts, contracts, finance, intake, people, proposals, revenue, suggestions
 from app.config import get_settings
 from app.services.records import today_ist
 
 PROMPT = (Path(__file__).parent / "prompts" / "purser.md").read_text()
-ALL_TOOLS = [*finance.TOOLS, *budget_months.TOOLS, *charts.TOOLS, *intake.TOOLS, *proposals.TOOLS, *people.TOOLS, *revenue.TOOLS, *contracts.TOOLS]
+ALL_TOOLS = [*finance.TOOLS, *budget_months.TOOLS, *charts.TOOLS, *intake.TOOLS, *proposals.TOOLS, *people.TOOLS, *revenue.TOOLS, *contracts.TOOLS, *suggestions.TOOLS]
 
 
 def _instructions(ctx: RunContextWrapper[PurserContext], agent: Agent) -> str:

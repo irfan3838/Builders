@@ -97,12 +97,15 @@ async def propose_onboarding(ctx: Ctx, name: str, designation: str, department: 
 @safe_tool
 async def propose_message(ctx: Ctx, audience: Literal["person", "department", "all"], subject: str, body: str,
                           user_ids: list[int] | None = None, department: str | None = None,
-                          channels: list[Literal["inbox", "email"]] | None = None) -> dict:
+                          channels: list[Literal["inbox", "email"]] | None = None,
+                          external_emails: list[str] | None = None) -> dict:
     """Propose sending a message or announcement. Draft the subject and body yourself in the user's language and
     tone; the preview shows exact text, recipients and channels. channels default to the Purser inbox; add 'email'
-    when the user asks for email."""
+    when the user asks for email. Colleagues go in user_ids (resolve with find_people). People outside the company
+    go in external_emails exactly as the user spelled the address; they are emailed (they have no Purser inbox)."""
     return await _propose(ctx, "send_message", {"audience": audience, "subject": subject, "body": body, "user_ids": user_ids,
-                                                "department": department, "channels": channels or ["inbox"]})
+                                                "department": department, "channels": channels or ["inbox"],
+                                                "external_emails": external_emails})
 
 
 @function_tool

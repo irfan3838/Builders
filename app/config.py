@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     openai_model_fast: str = "gpt-5.4-mini"
     openai_model_strong: str = ""
     openai_model_voice: str = "gpt-live-1.1"
+    openai_voice_name: str = "marin"
+    openai_voice_speed: float = 1.15  # 0.25-1.5; dropped automatically if the live endpoint rejects it
     openai_model_extract: str = ""
     openai_model_transcribe: str = "gpt-transcribe"
 
