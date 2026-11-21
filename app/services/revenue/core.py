@@ -76,7 +76,7 @@ def log(
     before: dict[str, Any] | None = None,
     after: dict[str, Any] | None = None,
 ) -> AuditEvent:
-    """Append one audit event (Munshi's audit_events), tagged with the channel like copilot's audit log."""
+    """Append one audit event (Purser's audit_events), tagged with the channel like copilot's audit log."""
     ev = AuditEvent(
         workspace_id=rv.ws,
         actor_id=rv.actor_id,

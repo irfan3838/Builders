@@ -15,13 +15,13 @@ from app.actor import Actor
 from app.config import get_settings
 from app.models import Conversation, User
 
-COOKIE = "munshi_session"
+COOKIE = "purser_session"
 MAX_AGE = 12 * 3600
 _ph = PasswordHasher()
 
 
 def _serializer() -> URLSafeTimedSerializer:
-    return URLSafeTimedSerializer(get_settings().session_secret, salt="munshi-session")
+    return URLSafeTimedSerializer(get_settings().session_secret, salt="purser-session")
 
 
 async def login(response: Response, email: str, password: str) -> dict:

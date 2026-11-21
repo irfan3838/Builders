@@ -9,14 +9,14 @@ from agents import RunContextWrapper, function_tool
 from pydantic import BaseModel, ConfigDict, Field
 
 from app import db
-from app.agent.context import MunshiContext, safe_tool
+from app.agent.context import PurserContext, safe_tool
 from app.agent.tools.proposals import _propose
 from app.services import budget
 from app.services import budget_months as bm
 from app.services.budget_actions import step_id
 from app.services.records import today_ist
 
-Ctx = RunContextWrapper[MunshiContext]
+Ctx = RunContextWrapper[PurserContext]
 
 
 @function_tool

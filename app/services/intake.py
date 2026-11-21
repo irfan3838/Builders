@@ -21,7 +21,8 @@ from app.models import Bill, Claim, CompanyPayment, Document, Extraction, Party,
 from app.money import format_inr
 from app.services import audit, records, storage
 
-ALLOWED = {"application/pdf", "image/jpeg", "image/png"}
+DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+ALLOWED = {"application/pdf", "image/jpeg", "image/png", DOCX}
 
 
 @dataclass
@@ -47,12 +48,13 @@ def _pdf_pages(data: bytes) -> tuple[int | None, str | None]:
 
 async def accept_upload(s: AsyncSession, actor: Actor, filename: str, data: bytes) -> UploadResult:
     st = get_settings()
-    if len(data) > st.upload_max_bytes:
-        return UploadResult(None, "too_large", f"The file is {len(data) // 1024 // 1024} MB; the limit is {st.upload_max_bytes // 1024 // 1024} MB.")
+    max_bytes = max(st.upload_max_bytes, st.contract_max_bytes)  # bills are re-checked against their own limit at intake
+    if len(data) > max_bytes:
+        return UploadResult(None, "too_large", f"The file is {len(data) // 1024 // 1024} MB; the limit is {max_bytes // 1024 // 1024} MB.")
     kind = filetype.guess(data)
     media = kind.mime if kind else "application/octet-stream"
     if media not in ALLOWED:
-        return UploadResult(None, "unsupported", f"This file type ({media}) is not supported. Upload a PDF, JPEG or PNG receipt or bill.")
+        return UploadResult(None, "unsupported", f"This file type ({media}) is not supported. Upload a PDF, JPEG or PNG receipt or bill, or a PDF/Word contract.")
     pages = 1
     if media == "application/pdf":
         n, err = _pdf_pages(data)
@@ -61,8 +63,9 @@ async def accept_upload(s: AsyncSession, actor: Actor, filename: str, data: byte
         if err:
             return UploadResult(None, "unreadable", "I could not read this PDF. It may be damaged.")
         pages = n or 0
-        if pages > st.upload_max_pages:
-            return UploadResult(None, "too_many_pages", f"The PDF has {pages} pages; this release reads up to {st.upload_max_pages}.")
+        max_pages = max(st.upload_max_pages, st.contract_max_pages)  # bills: upload_max_pages, enforced at intake
+        if pages > max_pages:
+            return UploadResult(None, "too_many_pages", f"The PDF has {pages} pages; this release reads up to {max_pages}.")
 
     sha = hashlib.sha256(data).hexdigest()
     prior = (await s.execute(select(Document).where(Document.workspace_id == actor.workspace_id, Document.sha256 == sha)
@@ -87,6 +90,12 @@ async def accept_upload(s: AsyncSession, actor: Actor, filename: str, data: byte
 
 async def describe_outcome(s: AsyncSession, actor: Actor, doc: Document) -> dict:
     out = {"document_id": doc.id, "status": doc.status, "outcome": doc.outcome}
+    if doc.outcome == "contract":
+        from app.models import Contract
+
+        c = (await s.execute(select(Contract).where(Contract.workspace_id == actor.workspace_id, Contract.document_id == doc.id))).scalars().first()
+        if c:
+            out.update(record_ref=c.ref, title=c.title)
     if doc.outcome in ("claim", "bill"):
         model = Claim if doc.outcome == "claim" else Bill
         rec = (await s.execute(select(model).where(model.workspace_id == actor.workspace_id, model.document_id == doc.id))).scalars().first()
@@ -244,7 +253,7 @@ async def correct_field(s: AsyncSession, actor: Actor, doc: Document, ex: Extrac
 
 
 async def close(s: AsyncSession, actor: Actor, doc: Document, outcome: str, reason: str) -> Document:
-    allowed = {"contract_out_of_scope", "unsupported", "matched_payment", "reconciliation", "duplicate", "not_business", "failed"}
+    allowed = {"contract", "contract_out_of_scope", "unsupported", "matched_payment", "reconciliation", "duplicate", "not_business", "failed"}
     if outcome not in allowed:
         raise DomainError("VALIDATION", f"Outcome must be one of {sorted(allowed)}")
     if doc.outcome:

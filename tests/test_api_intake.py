@@ -8,6 +8,7 @@ from pypdf import PdfWriter
 
 from app import db
 from app.errors import DomainError
+from app.config import get_settings
 from app.main import app
 from app.services import intake, proposals, records
 from tests.conftest import add_inspected_document, make_actor
@@ -16,9 +17,9 @@ ORIGIN = "http://localhost:8000"
 PNG = open("evals/dev/dev_hotel_receipt_synthetic.png", "rb").read()
 
 
-async def client_for(email="priya@munshi.demo"):
+async def client_for(email="priya@purser.demo"):
     c = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=ORIGIN, headers={"origin": ORIGIN})
-    r = await c.post("/api/auth/login", json={"email": email, "password": "munshi-demo"})
+    r = await c.post("/api/auth/login", json={"email": email, "password": "purser-demo"})
     assert r.status_code == 200, r.text
     c.headers["x-csrf-token"] = r.json()["csrf"]
     conv = (await c.post("/api/conversations")).json()["conversation_id"]
@@ -39,7 +40,7 @@ def _pdf(encrypted=False, pages=1) -> bytes:
 
 async def test_login_rejects_bad_password(seeded):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=ORIGIN) as c:
-        r = await c.post("/api/auth/login", json={"email": "priya@munshi.demo", "password": "wrong"})
+        r = await c.post("/api/auth/login", json={"email": "priya@purser.demo", "password": "wrong"})
     assert r.status_code == 401
 
 
@@ -65,7 +66,7 @@ async def test_upload_explicit_outcomes(seeded, name, data, outcome):
     if name == "locked.pdf":
         data = _pdf(encrypted=True)
     if name == "long.pdf":
-        data = _pdf(pages=6)
+        data = _pdf(pages=get_settings().contract_max_pages + 1)
     c = await client_for()
     r = (await c.post("/api/documents", files={"file": (name, data, "application/octet-stream")})).json()
     assert r["outcome"] == outcome and r["document_id"] is None and r["message"]
@@ -85,7 +86,7 @@ async def test_exact_replay_returns_existing_document(seeded):
 async def test_employee_cannot_open_other_users_document(seeded):
     priya = await client_for()
     doc = (await priya.post("/api/documents", files={"file": ("r.png", PNG, "image/png")})).json()["document_id"]
-    arjun = await client_for("arjun@munshi.demo")
+    arjun = await client_for("arjun@purser.demo")
     assert (await arjun.get(f"/api/documents/{doc}/pages/1")).status_code == 404
     await priya.aclose()
     await arjun.aclose()
@@ -134,7 +135,7 @@ async def test_button_confirm_and_replay(seeded):
     r1 = (await c.post(f"/api/proposals/{p.id}/confirm")).json()
     r2 = (await c.post(f"/api/proposals/{p.id}/confirm")).json()
     assert r1["status"] == "executed" and r2["status"] == "replayed" and r1["receipt"]["ref"] == r2["receipt"]["ref"]
-    arjun = await client_for("arjun@munshi.demo")
+    arjun = await client_for("arjun@purser.demo")
     assert (await arjun.post(f"/api/proposals/{p.id}/confirm")).status_code == 404  # another actor's proposal
     await c.aclose()
     await arjun.aclose()

@@ -1,6 +1,6 @@
 """Customer invoices: create, send, pay, allocate, edit, delete, move a part payment's balance.
 
-Ported from copilot services/invoices.py (the user's own module), adapted to Munshi: sync SQLAlchemy run via
+Ported from copilot services/invoices.py (the user's own module), adapted to Purser: sync SQLAlchemy run via
 `AsyncSession.run_sync`, every query scoped to the workspace, audit into `audit_events`, client = Party.
 Totals are computed here from the amount and the rate, never taken as given. `paid_paise` on the invoice is a
 cache of its payments, refreshed by `_cache` on every change.

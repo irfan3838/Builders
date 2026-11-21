@@ -8,12 +8,12 @@ from agents import RunContextWrapper, function_tool
 from sqlalchemy import and_, or_, select
 
 from app import db
-from app.agent.context import MunshiContext, safe_tool
+from app.agent.context import PurserContext, safe_tool
 from app.models import AuditEvent, Bill, BudgetLine, Claim, Message, Party, Receipt, Settlement
 from app.money import format_inr
 from app.services import budget, records
 
-Ctx = RunContextWrapper[MunshiContext]
+Ctx = RunContextWrapper[PurserContext]
 
 
 def _pos_view(line: BudgetLine, p: dict) -> dict:
@@ -110,6 +110,19 @@ async def _attention(s, a) -> list[dict]:
                 continue  # lower-value nudges stay in get_revenue_suggestions
             items.append({"kind": f"revenue_{sg.kind}", "ref": sg.ref or sg.id, "who": sg.title, "amount_paise": 0,
                           "date": today.isoformat(), "detail": sg.detail})
+        # Contracts: dated obligations within 30 days; open flags waiting for the admin's decision.
+        from app.services.contracts import review as ctr_review
+        from app.services.contracts import store as ctr_store
+
+        if ctr_review.can_view(a):
+            for d in await ctr_store.deadlines(s, a, 30):
+                items.append({"kind": f"contract_{d['kind']}", "ref": d["contract"], "who": d["counterparty"] or d["title"],
+                              "amount_paise": 0, "date": d["due_on"], "detail": f"{d['kind'].replace('_', ' ')} in {d['days_left']} days"})
+        if ctr_review.can_decide(a):
+            flags = await ctr_store.liabilities(s, a, include_decided=False)
+            if flags:
+                items.append({"kind": "contract_flags", "ref": f"{len(flags)} open", "who": "Contracts", "amount_paise": 0,
+                              "date": None, "detail": f"{len({f['contract'] for f in flags})} contract(s) have flags waiting for review"})
         from app.services import budget_months as bm
         bell = await bm.alerts(s, a, today)
         for al in bell["alerts"]:
@@ -176,7 +189,10 @@ async def get_record(ctx: Ctx, ref: str) -> dict:
         out.update(invoice_no=r.invoice_no, due_date=r.due_date.isoformat() if r.due_date else None)
     else:
         out.update(merchant=r.merchant, submitter_id=r.submitter_id, reservation_id=r.reservation_id)
-    ctx.context.show({"card": "record", "ref": r.ref})
+    if rtype == "claim" and r.reservation_id:
+        ctx.context.show({"card": "claim_review", "ref": r.ref})  # receipt vs reservation vs budget
+    else:
+        ctx.context.show({"card": "record", "ref": r.ref})
     return out
 
 

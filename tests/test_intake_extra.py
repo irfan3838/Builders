@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 
 from app import db
 from app.actor import Actor
-from app.agent.context import MunshiContext
+from app.agent.context import PurserContext
 from app.agent.tools import finance as finance_tools
 from app.agent.tools import intake as intake_tools
 from app.agent.tools import proposals as proposal_tools
@@ -59,10 +59,10 @@ def F(vendor="Sunrise Residency Pune", rupees=4800, day="2026-11-19", **extra) -
 
 
 async def call(tool, actor: Actor, **args):
-    """Invoke a FunctionTool exactly as the SDK would, minus the model. Returns (result, MunshiContext)."""
+    """Invoke a FunctionTool exactly as the SDK would, minus the model. Returns (result, PurserContext)."""
     from agents.tool_context import ToolContext
 
-    mc = MunshiContext(actor)
+    mc = PurserContext(actor)
     raw = json.dumps(args)
     tctx = ToolContext(context=mc, tool_name=tool.name, tool_call_id="call_1", tool_arguments=raw)
     out = await tool.on_invoke_tool(tctx, raw)
@@ -120,14 +120,16 @@ async def test_media_type_is_sniffed_from_bytes_not_filename(seeded):
 
 async def test_too_large_and_unreadable_pdf_create_no_document(seeded):
     priya = await make_actor(seeded)
-    limit = get_settings().upload_max_bytes
+    st = get_settings()
+    limit = max(st.upload_max_bytes, st.contract_max_bytes)
     before = await count(Document)
     async with db.session_scope() as s:
         big = await intake.accept_upload(s, priya, "big.pdf", b"%PDF-" + b"0" * limit)
         broken = await intake.accept_upload(s, priya, "broken.pdf", _pdf(garbage=True))
         five = await intake.accept_upload(s, priya, "five.pdf", _pdf(pages=5))
-    assert (big.outcome, broken.outcome, five.outcome) == ("too_large", "unreadable", "accepted")
-    assert await count(Document) == before + 1
+        six = await intake.accept_upload(s, priya, "six.pdf", _pdf(pages=6))
+    assert (big.outcome, broken.outcome, five.outcome, six.outcome) == ("too_large", "unreadable", "accepted", "accepted")
+    assert await count(Document) == before + 2
 
 
 async def test_exact_replay_reports_closed_outcome_of_the_first_upload(seeded):
@@ -586,7 +588,7 @@ async def test_inspect_document_contract_next_step_and_closed_short_circuit(seed
     priya = await make_actor(seeded)
     doc = await add_doc(priya, {"vendor": "Acme Traders", "date": "2026-11-01", "total_paise": 5_000_000}, doc_type="contract")
     out, _ = await call(intake_tools.inspect_document, priya, document_id=doc)
-    assert "close_intake(outcome='contract_out_of_scope')" in out["next_step"] and out["open_reservations"] == []
+    assert "call review_contract(document_id)" in out["next_step"] and out["open_reservations"] == []
     before = await finance_counts()
     res, _ = await call(intake_tools.close_intake, priya, document_id=doc, outcome="contract_out_of_scope", reason="MSA")
     assert res == {"ok": True, "document_id": doc, "outcome": "contract_out_of_scope", "finance_records_created": 0}
@@ -660,12 +662,12 @@ async def test_find_reservations_tool_scopes_to_employee_and_uses_effective_date
 
 async def test_login_sets_hardened_cookie_and_normalizes_email(seeded):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=ORIGIN) as c:
-        r = await c.post("/api/auth/login", json={"email": "  PRIYA@munshi.demo ", "password": "munshi-demo"})
+        r = await c.post("/api/auth/login", json={"email": "  PRIYA@purser.demo ", "password": "purser-demo"})
         assert r.status_code == 200 and r.json()["user"]["role"] == "admin"
         cookie = r.headers["set-cookie"].lower()
         assert "httponly" in cookie and "samesite=strict" in cookie and "path=/" in cookie
         assert "no-store" in r.headers["cache-control"]
-        bad = await c.post("/api/auth/login", json={"email": "nobody@munshi.demo", "password": "munshi-demo"})
+        bad = await c.post("/api/auth/login", json={"email": "nobody@purser.demo", "password": "purser-demo"})
         assert bad.status_code == 401
 
 
@@ -677,7 +679,7 @@ async def test_wrong_origin_and_wrong_csrf_rejected_on_writes(seeded):
     assert r.status_code == 403
     assert (await c.post("/api/conversations")).status_code == 201
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=ORIGIN) as anon:
-        r = await anon.post("/api/auth/login", headers={"origin": "https://evil.example"}, json={"email": "priya@munshi.demo", "password": "munshi-demo"})
+        r = await anon.post("/api/auth/login", headers={"origin": "https://evil.example"}, json={"email": "priya@purser.demo", "password": "purser-demo"})
         assert r.status_code == 403
     await c.aclose()
 
@@ -685,10 +687,10 @@ async def test_wrong_origin_and_wrong_csrf_rejected_on_writes(seeded):
 async def test_tampered_cookie_and_logout_end_the_session(seeded):
     c = await client_for()
     assert (await c.get("/api/me")).status_code == 200
-    good = c.cookies.get("munshi_session")
-    c.cookies.set("munshi_session", good[:-3] + ("AAA" if not good.endswith("AAA") else "BBB"))
+    good = c.cookies.get("purser_session")
+    c.cookies.set("purser_session", good[:-3] + ("AAA" if not good.endswith("AAA") else "BBB"))
     assert (await c.get("/api/me")).status_code == 401
-    c.cookies.set("munshi_session", good)
+    c.cookies.set("purser_session", good)
     assert (await c.get("/api/me")).status_code == 200
     out = await c.post("/api/auth/logout")
     assert out.status_code == 200 and "max-age=0" in out.headers["set-cookie"].lower()  # browser drops the cookie
@@ -700,7 +702,7 @@ async def test_tampered_cookie_and_logout_end_the_session(seeded):
 async def test_other_users_or_workspaces_conversation_id_is_404(seeded):
     async with db.session_scope() as s:
         other = await seed(s, workspace_name="Other Co (SYNTHETIC)", email_domain="other.demo")
-    priya, arjun, other_priya = await client_for(), await client_for("arjun@munshi.demo"), await client_for("priya@other.demo")
+    priya, arjun, other_priya = await client_for(), await client_for("arjun@purser.demo"), await client_for("priya@other.demo")
     priya_conv, other_conv = priya.headers["x-conversation-id"], other_priya.headers["x-conversation-id"]
     assert (await arjun.get("/api/me", headers={"x-conversation-id": priya_conv})).status_code == 404
     assert (await priya.get("/api/me", headers={"x-conversation-id": other_conv})).status_code == 404
@@ -763,7 +765,7 @@ async def test_upload_requires_file_and_session(seeded):
 
 
 async def test_employee_upload_visibility(seeded):
-    priya, arjun = await client_for(), await client_for("arjun@munshi.demo")
+    priya, arjun = await client_for(), await client_for("arjun@purser.demo")
     mine = (await arjun.post("/api/documents", files={"file": ("a.png", PNG, "image/png")})).json()["document_id"]
     assert (await arjun.get(f"/api/documents/{mine}/pages/1")).status_code == 200
     assert (await priya.get(f"/api/documents/{mine}/pages/1")).status_code == 200        # approver sees the workspace's uploads
@@ -785,7 +787,7 @@ async def test_cross_workspace_document_page_is_404(seeded):
 
 
 async def test_exact_replay_does_not_leak_other_users_document_to_employee(seeded):
-    priya, arjun = await client_for(), await client_for("arjun@munshi.demo")
+    priya, arjun = await client_for(), await client_for("arjun@purser.demo")
     first = (await priya.post("/api/documents", files={"file": ("r.png", PNG, "image/png")})).json()
     second = (await arjun.post("/api/documents", files={"file": ("r.png", PNG, "image/png")})).json()
     assert second["document_id"] != first["document_id"] or second["existing"] is None
@@ -810,7 +812,7 @@ async def _approved_bill():
 
 
 async def test_button_cancel_then_confirm_is_409_and_other_actor_cannot_cancel(seeded):
-    c, arjun = await client_for(), await client_for("arjun@munshi.demo")
+    c, arjun = await client_for(), await client_for("arjun@purser.demo")
     p, b = await _http_proposal(seeded, c)
     assert (await arjun.post(f"/api/proposals/{p.id}/cancel")).status_code == 404
     assert (await arjun.get(f"/api/proposals/{p.id}")).status_code == 404
@@ -877,7 +879,7 @@ async def test_cross_workspace_receipt_and_proposal_are_404(seeded):
 
 
 async def test_employee_cannot_read_approvers_receipt(seeded):
-    c, arjun = await client_for(), await client_for("arjun@munshi.demo")
+    c, arjun = await client_for(), await client_for("arjun@purser.demo")
     p, _ = await _http_proposal(seeded, c)
     rid = (await c.post(f"/api/proposals/{p.id}/confirm")).json()["receipt"]["id"]
     assert (await arjun.get(f"/api/receipts/{rid}")).status_code in (403, 404)

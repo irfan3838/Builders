@@ -23,6 +23,10 @@ class Settings(BaseSettings):
 
     upload_max_bytes: int = 10 * 1024 * 1024
     upload_max_pages: int = 5
+    # Contracts are longer than bills: their own limits. "Us" in a contract: these names plus the workspace name.
+    contract_max_pages: int = 15
+    contract_max_bytes: int = 25 * 1024 * 1024
+    our_party_names: str = "Dzruptiv AI,Dzruptiv,Druptiv,Dzruptive"
     storage_backend: str = "local"  # local | s3
     storage_local_dir: str = ".uploads"
     s3_bucket: str = ""

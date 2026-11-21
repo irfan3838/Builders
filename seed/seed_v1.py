@@ -21,6 +21,7 @@ from app.models import (
     BudgetLine,
     Claim,
     CompanyPayment,
+    Contract,
     Invoice,
     InvoicePayment,
     Party,
@@ -42,15 +43,16 @@ def _party(ws: int, kind: str, name: str, *aliases: str) -> Party:
     return Party(workspace_id=ws, kind=kind, name=name, normalized_name=normalize_name(name), aliases=list(aliases))
 
 
-async def seed(s: AsyncSession, *, workspace_name: str = "Munshi Demo Traders Pvt Ltd (SYNTHETIC)", email_domain: str = "munshi.demo") -> dict:
+async def seed(s: AsyncSession, *, workspace_name: str = "Purser Demo Traders Pvt Ltd (SYNTHETIC)", email_domain: str = "purser.demo") -> dict:
     ph = PasswordHasher()
-    password = os.getenv("SEED_PASSWORD", "munshi-demo")
+    password = os.getenv("SEED_PASSWORD", "purser-demo")
+    admin_name = os.getenv("SEED_ADMIN_NAME", "Priya Sharma")  # the finance admin login (AWS demo: "Irfan")
     ws = Workspace(name=workspace_name, seed_version=SEED_VERSION, is_synthetic=True)
     s.add(ws)
     await s.flush()
     W = ws.id
 
-    priya_p, arjun_p, neha_p = (_party(W, "employee", n) for n in ("Priya Sharma", "Arjun Mehta", "Neha Iyer"))
+    priya_p, arjun_p, neha_p = (_party(W, "employee", n) for n in (admin_name, "Arjun Mehta", "Neha Iyer"))
     vendors = {
         "ganesh": _party(W, "vendor", "Shree Ganesh Printers"),
         "aws": _party(W, "vendor", "Amazon Web Services India Pvt Ltd", "AWS", "Amazon Web Services"),
@@ -70,8 +72,8 @@ async def seed(s: AsyncSession, *, workspace_name: str = "Munshi Demo Traders Pv
     await s.flush()
 
     # Demo email recipients come only from the allow-list (first -> Arjun, second -> Neha); never invented addresses.
-    allow = [e.strip() for e in os.getenv("EMAIL_ALLOWED_RECIPIENTS", "").split(",") if e.strip()] if email_domain == "munshi.demo" else []
-    priya = User(workspace_id=W, email=f"priya@{email_domain}", display_name="Priya Sharma", role="admin",
+    allow = [e.strip() for e in os.getenv("EMAIL_ALLOWED_RECIPIENTS", "").split(",") if e.strip()] if email_domain == "purser.demo" else []
+    priya = User(workspace_id=W, email=f"{admin_name.split()[0].lower()}@{email_domain}", display_name=admin_name, role="admin",
                  password_hash=ph.hash(password), party_id=priya_p.id, preferred_language="hinglish",
                  department="Finance", designation="Finance & HR Manager", start_date=date(2023, 6, 1))
     s.add(priya)
@@ -93,7 +95,7 @@ async def seed(s: AsyncSession, *, workspace_name: str = "Munshi Demo Traders Pv
         lines[cat] = BudgetLine(workspace_id=W, category=cat, department=dept[cat], fy=FY)
     s.add_all(lines.values())
     await s.flush()
-    # Monthly plan (Munshi went live in Jul 2026, so Apr-Jun carry no budget). Annual totals equal `alloc`.
+    # Monthly plan (Purser went live in Jul 2026, so Apr-Jun carry no budget). Annual totals equal `alloc`.
     # (Jul-Oct, Nov, Dec-Mar) monthly amounts in rupees. Travel is planned from the Pune trip month onwards.
     fy_months = [date(2026, m, 1) for m in range(4, 13)] + [date(2027, m, 1) for m in (1, 2, 3)]
     profile = {
@@ -202,7 +204,7 @@ async def seed(s: AsyncSession, *, workspace_name: str = "Munshi Demo Traders Pv
     await people.post_leave(s, W, neha.id, "CL", "reserved", 2, "leave_requested", source_id=lr.id)
     for code, topic, title, body in [
         ("HR-3.1", "leave", "Leave entitlement", "Every employee receives 12 days casual leave (CL), 8 days sick leave (SL) and 15 days earned leave (EL) per financial year (April-March). Leave is counted in working days; weekends are not counted. CL cannot exceed 3 consecutive days without manager approval in advance."),
-        ("HR-3.2", "leave", "Applying for leave", "Apply through Munshi at least 2 working days before casual or earned leave. Sick leave may be applied on the same day; more than 2 consecutive sick days need a medical certificate. Your manager approves; HR may approve when the manager is away."),
+        ("HR-3.2", "leave", "Applying for leave", "Apply through Purser at least 2 working days before casual or earned leave. Sick leave may be applied on the same day; more than 2 consecutive sick days need a medical certificate. Your manager approves; HR may approve when the manager is away."),
         ("HR-3.3", "leave carry forward", "Carry forward", "Up to 10 days of unused earned leave carry forward to the next financial year. Casual and sick leave lapse on 31 March."),
         ("FIN-2.1", "expenses reimbursement", "Travel and expense claims", "Submit claims with the original receipt within 30 days of the expense. Hotel stays are reimbursed up to Rs 5,000 per night in metro cities and Rs 3,500 elsewhere. Reimbursements are paid in the next weekly payment run after approval."),
         ("HR-5.1", "working hours office", "Working hours", "Office hours are 9:30 to 18:30, Monday to Friday. Employees may work from home up to 2 days a week with manager agreement."),
@@ -230,8 +232,35 @@ async def seed(s: AsyncSession, *, workspace_name: str = "Munshi Demo Traders Pv
         await bm.apply_close(s, admin, m, nxt, rows, None, source="imported_snapshot")
     await s.flush()
     rev = await _seed_revenue(s, admin, customers)
-    return {**rev, "workspace_id": W, "neha_id": neha.id, "neha_leave_ref": lr.ref, "priya_id": priya.id, "arjun_id": arjun.id, "travel_line_id": lines["Travel"].id,
+    ctr = await _seed_contracts(s, admin)
+    return {**rev, **ctr, "workspace_id": W, "neha_id": neha.id, "neha_leave_ref": lr.ref, "priya_id": priya.id, "arjun_id": arjun.id, "travel_line_id": lines["Travel"].id,
             "reservation_id": rs.id, "arjun_party_id": arjun_p.id, "priya_party_id": priya_p.id, "neha_claim_ref": c.ref}
+
+
+async def _seed_contracts(s: AsyncSession, admin) -> dict:
+    """Synthetic agreements (seed/contract_samples.py), read with the deterministic rules only (no model call at seed
+    time), so seeded findings carry low confidence and every run gives the same rows."""
+    from app.services.contracts import review as ctr_review
+    from app.services.contracts import store as ctr_store
+    from seed.contract_samples import SEEDED
+
+    ours = await ctr_review.our_names(s, admin)
+    out = {}
+    for key, c in SEEDED.items():
+        staged = await ctr_review.analyse(c["text"], c["filename"], ours, use_model=False)
+        row = Contract(workspace_id=admin.workspace_id, ref="pending", title=staged["title"][:200] + " (synthetic)",
+                       contract_type=staged["contract_type"], counterparty_name=staged["counterparty"],
+                       party_id=await ctr_store.match_party(s, admin, staged["counterparty"]),
+                       effective_on=ctr_store._date((staged["details"].get("effective_on") or {}).get("value")),
+                       expiry_on=ctr_store._date((staged["details"].get("expiry_on") or {}).get("value")),
+                       details={"evidence": staged["details"], "parties": staged["parties"], "filename": c["filename"], "synthetic": True},
+                       text=c["text"], text_source="pdf_text", scanned_by_model=False, created_by=admin.user_id)
+        s.add(row)
+        await s.flush()
+        row.ref = f"AG{row.id}"
+        await ctr_store.add_findings(s, admin, row, staged["findings"], staged["deadlines"])
+        out[f"contract_{key}_ref"] = row.ref
+    return out
 
 
 async def _seed_revenue(s: AsyncSession, admin, customers: dict) -> dict:
@@ -253,8 +282,11 @@ async def _seed_revenue(s: AsyncSession, admin, customers: dict) -> dict:
 
     today = date(2026, 11, 21)
     # one cached ECB reference quote, labelled synthetic: the offline demo prices from it; a live fetch replaces it.
-    s.add(FxQuote(currency="USD", rate_date=date(2026, 11, 20), rate_micro=84_100_000))
-    await s.flush()
+    # fx_quotes is global (no workspace), so a second seeded workspace must not insert the same quote again.
+    quote_on = date(2026, 11, 20)
+    if not (await s.execute(select(FxQuote.id).where(FxQuote.currency == "USD", FxQuote.rate_date == quote_on))).first():
+        s.add(FxQuote(currency="USD", rate_date=quote_on, rate_micro=84_100_000))
+        await s.flush()
 
     def go(ss) -> dict:
         rv = Rev(admin.workspace_id, admin.user_id, today, channel="seed")

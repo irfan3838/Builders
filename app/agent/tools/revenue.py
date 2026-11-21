@@ -11,7 +11,7 @@ from typing import Literal
 from agents import RunContextWrapper, function_tool
 
 from app import db
-from app.agent.context import MunshiContext, safe_tool
+from app.agent.context import PurserContext, safe_tool
 from app.agent.tools.proposals import _propose
 from app.services.records import today_ist
 from app.services.revenue import clients as cl
@@ -20,7 +20,7 @@ from app.services.revenue import invoices as inv
 from app.services.revenue.core import Rev
 from app.services.revenue_actions import parse_date, parse_fy, parse_month, require_edit, require_view
 
-Ctx = RunContextWrapper[MunshiContext]
+Ctx = RunContextWrapper[PurserContext]
 
 
 def _period(period: str | None, today) -> str | None:
@@ -269,7 +269,7 @@ async def complete_reminder(ctx: Ctx, reminder_id: int) -> dict:
 @function_tool
 @safe_tool
 async def mark_not_yet(ctx: Ctx, ref: str) -> dict:
-    """The user says a sent invoice has NOT been paid yet (answer to the weekly 'has it been paid?' check): Munshi asks
+    """The user says a sent invoice has NOT been paid yet (answer to the weekly 'has it been paid?' check): Purser asks
     again in a week. If they say it HAS been paid, use propose_payment instead."""
     def go(ss, rv):
         r = inv.not_paid_yet(ss, rv, inv.by_ref(ss, rv, ref), on=rv.today)

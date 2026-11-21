@@ -1,6 +1,6 @@
 """A model never supplies a booked amount or rate on its own: the number must appear in what the user said.
 
-Copilot checked typed chat text with `money.said`. Munshi is voice-first, so the transcript may hold digits
+Copilot checked typed chat text with `money.said`. Purser is voice-first, so the transcript may hold digits
 ("50,000", "1.5L") or words in English / Hindi / Hinglish ("fifty thousand", "pachaas hazaar", "dedh lakh").
 `numbers_spoken` reads both. The words come from server-observed turns only (VoiceTurn), never from the model.
 """
@@ -66,6 +66,9 @@ def _words_to_numbers(text: str) -> set[Decimal]:
             current += val
             active = True
             continue
+        if tok in _SCALES and not active and modifier:  # 'sawa lakh' = 1.25 lakh, 'saade hazaar' = 1.5 thousand
+            current, active = Decimal("1.25") if modifier == "sawa" else Decimal("1.5"), True
+            modifier = None
         if tok in _SCALES and active:
             scale = _SCALES[tok]
             if scale == 100:

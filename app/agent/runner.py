@@ -1,4 +1,4 @@
-"""One user turn through MunshiAgent. Shared by the text channel, push-to-talk and voice delegation."""
+"""One user turn through PurserAgent. Shared by the text channel, push-to-talk and voice delegation."""
 
 from __future__ import annotations
 
@@ -13,12 +13,12 @@ from sqlalchemy import select
 
 from app import db
 from app.actor import Actor
-from app.agent.context import MunshiContext
-from app.agent.munshi import build_agent
+from app.agent.context import PurserContext
+from app.agent.purser import build_agent
 from app.models import Proposal
 from app.services import confirmation, proposals
 
-log = logging.getLogger("munshi.runner")
+log = logging.getLogger("purser.runner")
 TURN_TIMEOUT_S = 90
 
 
@@ -42,7 +42,7 @@ async def run_turn(actor: Actor, user_text: str, *, channel: str = "text", sourc
     if record_turn:
         async with db.session_scope() as s:
             await confirmation.record_turn(s, actor, user_text, source=source, start_ms=start_ms, end_ms=end_ms)
-    ctx = MunshiContext(actor=actor, channel=channel)
+    ctx = PurserContext(actor=actor, channel=channel)
     t0 = time.perf_counter()
     try:
         result = await asyncio.wait_for(

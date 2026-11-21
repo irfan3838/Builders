@@ -464,10 +464,10 @@ async def test_months_endpoint_other_workspace_404(seeded):
 # ---------------------------------------------------------------- I. tool wiring
 
 def test_ten_tools_wired_with_strict_schemas():
-    from app.agent import munshi
+    from app.agent import purser
     from app.agent.tools import budget_months as t
     assert len(t.TOOLS) == 10
-    names = {x.name for x in munshi.ALL_TOOLS}
+    names = {x.name for x in purser.ALL_TOOLS}
     for tool in t.TOOLS:
         assert tool.name in names
         assert tool.strict_json_schema is True

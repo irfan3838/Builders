@@ -1,4 +1,4 @@
-# Munshi architecture decisions
+# Purser architecture decisions
 
 ## Voice transport and confirmation (H0 gate, 2026-11-21) — DECIDED
 - **Transport:** GPT-Live (`gpt-live-1.1`) over browser WebRTC, **client delegation**. The backend creates the session (`client.live.create`) from the browser's SDP offer, so the API key never reaches the browser.

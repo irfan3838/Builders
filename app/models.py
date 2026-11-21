@@ -612,3 +612,79 @@ class Policy(Base, TimestampMixin):
     topic: Mapped[str] = mapped_column(String(60), index=True)
     title: Mapped[str] = mapped_column(String(200))
     body: Mapped[str] = mapped_column(Text)
+
+
+# ------------------------------------------------------------------ contracts (copilot contracts module, lean port)
+
+
+class Contract(Base, TimestampMixin):
+    """One agreement. Text is the extracted reading of the original document (kept in storage via documents)."""
+
+    __tablename__ = "contracts"
+    __table_args__ = (UniqueConstraint("workspace_id", "id"), ws_fk("document_id", "documents"))
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    ref: Mapped[str] = mapped_column(String(20), index=True)
+    document_id: Mapped[int | None] = mapped_column(BigInteger)
+    title: Mapped[str] = mapped_column(String(200))
+    contract_type: Mapped[str] = mapped_column(String(20))  # nda | msa | sow | vendor | other
+    counterparty_name: Mapped[str | None] = mapped_column(String(200))
+    party_id: Mapped[int | None] = mapped_column(BigInteger)  # matched customer / vendor
+    our_role: Mapped[str] = mapped_column(String(30), default="service_provider")
+    status: Mapped[str] = mapped_column(String(20), default="active")  # active | expired | terminated
+    effective_on: Mapped[date | None] = mapped_column(Date)
+    expiry_on: Mapped[date | None] = mapped_column(Date, index=True)
+    details: Mapped[dict] = mapped_column(JSONB, default=dict)  # evidence per detail, parties map, reading notes
+    text: Mapped[str] = mapped_column(Text)
+    text_source: Mapped[str] = mapped_column(String(20))  # pdf_text | vision | mixed | docx
+    scanned_by_model: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[int] = mapped_column(BigInteger)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class ContractFinding(Base, TimestampMixin):
+    """A clause found in a contract (copilot ctr_clause) plus Purser's liability reading of it."""
+
+    __tablename__ = "contract_findings"
+    __table_args__ = (ws_fk("contract_id", "contracts"), UniqueConstraint("workspace_id", "id"))
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    contract_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    clause_type: Mapped[str] = mapped_column(String(40))
+    start: Mapped[int] = mapped_column(Integer)
+    stop: Mapped[int] = mapped_column(Integer)
+    quote: Mapped[str] = mapped_column(Text)
+    risk: Mapped[str] = mapped_column(String(10))  # high | medium | low | standard
+    confidence: Mapped[str] = mapped_column(String(10))  # high | medium | low | manual
+    state: Mapped[str] = mapped_column(String(10))  # tagged | proposed | accepted | rejected | modified
+    source: Mapped[str] = mapped_column(String(10), default="ai")  # ai | manual
+    note: Mapped[str | None] = mapped_column(String(300))
+    explanation: Mapped[str | None] = mapped_column(String(400))
+    # liability reading (grounded phrases; amounts and periods parsed by code)
+    bearer: Mapped[str | None] = mapped_column(String(15))  # us | counterparty | mutual | unclear
+    bearer_term: Mapped[str | None] = mapped_column(String(120))
+    beneficiary: Mapped[str | None] = mapped_column(String(120))
+    trigger_quote: Mapped[str | None] = mapped_column(Text)
+    cap_paise: Mapped[int | None] = mapped_column(BigInteger)
+    cap_basis: Mapped[str | None] = mapped_column(String(300))
+    carve_outs: Mapped[list] = mapped_column(JSONB, default=list)
+    notice_days: Mapped[int | None] = mapped_column(Integer)
+    liability_source: Mapped[str | None] = mapped_column(String(10))  # rules | model | reviewer
+    reviewer_id: Mapped[int | None] = mapped_column(BigInteger)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    comment: Mapped[str | None] = mapped_column(String(500))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class ContractDeadline(Base, TimestampMixin):
+    """A dated obligation computed by code from the contract (expiry, renewal notice, survival end)."""
+
+    __tablename__ = "contract_deadlines"
+    __table_args__ = (ws_fk("contract_id", "contracts"),)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    contract_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    finding_id: Mapped[int | None] = mapped_column(BigInteger)
+    kind: Mapped[str] = mapped_column(String(20))  # expiry | renewal_notice | survival_end
+    due_on: Mapped[date] = mapped_column(Date, index=True)
+    basis: Mapped[str] = mapped_column(Text)

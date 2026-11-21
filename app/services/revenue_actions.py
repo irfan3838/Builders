@@ -1,4 +1,4 @@
-"""Revenue writes as propose -> present -> confirm -> receipt actions (copilot's assistant operations, Munshi's
+"""Revenue writes as propose -> present -> confirm -> receipt actions (copilot's assistant operations, Purser's
 trust boundary).
 
 plan() runs the real service inside a SAVEPOINT and rolls it back: the preview is exactly what confirm will do,
@@ -10,7 +10,7 @@ Amounts and rates the model passes must appear in the user's recent server-obser
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.actor import Actor
 from app.errors import FORBIDDEN, VALIDATION, DomainError
-from app.models import Invoice, Party
+from app.models import Invoice, Party, Receipt
 from app.services.actions import Execution, Plan
 from app.services.records import today_ist
 from app.services.revenue import clients as cl
@@ -174,7 +174,9 @@ class RevAction:
 
     async def execute(self, s: AsyncSession, actor: Actor, args: dict, receipt_id: int) -> Execution:
         require_edit(actor)
-        rv = Rev.of(actor, today_ist(), channel=self.channel, receipt_id=receipt_id)
+        receipt = await s.get(Receipt, receipt_id)  # created by proposals.confirm just before execute
+        rv = replace(Rev.of(actor, today_ist(), channel=self.channel, receipt_id=receipt_id),
+                     proposal_id=receipt.proposal_id if receipt else None)
         out = await s.run_sync(lambda ss: self.run(ss, rv, args))
         return Execution(out.summary, out.effects)
 

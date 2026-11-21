@@ -46,7 +46,7 @@ class Mail:
 
     def enable(self, *allow):
         base = get_settings()
-        patched = base.model_copy(update={"gmail_address": "munshi@test.invalid", "gmail_app_password": "not-a-secret",
+        patched = base.model_copy(update={"gmail_address": "purser@test.invalid", "gmail_app_password": "not-a-secret",
                                           "email_allowed_recipients": ",".join(allow)})
         self._mp.setattr(messaging, "get_settings", lambda: patched)
 
@@ -116,7 +116,7 @@ async def add_employee(ids, name, reports_to: int | None, dept="Sales", email=No
         p = Party(workspace_id=ids["workspace_id"], kind="employee", name=name, normalized_name=name.lower(), aliases=[])
         s.add(p)
         await s.flush()
-        u = User(workspace_id=ids["workspace_id"], email=email or f"{name.lower().replace(' ', '.')}@munshi.demo", display_name=name, role="employee",
+        u = User(workspace_id=ids["workspace_id"], email=email or f"{name.lower().replace(' ', '.')}@purser.demo", display_name=name, role="employee",
                  password_hash="x", party_id=p.id, department=dept, designation="Exec", reports_to_id=reports_to, status="active")
         s.add(u)
         await s.flush()
@@ -631,9 +631,9 @@ def test_send_smtp_builds_expected_message(smtp):
     mid = smtp("arjun@gmail.test", "Leave L2 approved", "Hi Arjun")
     srv = FakeSMTP.instances[0]
     msg = srv.sent[0]
-    assert (srv.host, srv.port, srv.creds) == ("smtp.gmail.com", 465, ("munshi@test.invalid", "not-a-secret"))
-    assert msg["To"] == "arjun@gmail.test" and msg["From"] == "Munshi <munshi@test.invalid>" and msg["Subject"] == "Leave L2 approved"
-    assert mid == msg["Message-ID"] and mid.startswith("<") and "Sent by Munshi" in msg.get_content() and "Hi Arjun" in msg.get_content()
+    assert (srv.host, srv.port, srv.creds) == ("smtp.gmail.com", 465, ("purser@test.invalid", "not-a-secret"))
+    assert msg["To"] == "arjun@gmail.test" and msg["From"] == "Purser <purser@test.invalid>" and msg["Subject"] == "Leave L2 approved"
+    assert mid == msg["Message-ID"] and mid.startswith("<") and "Sent by Purser" in msg.get_content() and "Hi Arjun" in msg.get_content()
 
 
 def test_send_smtp_never_allows_header_injection(smtp):
@@ -719,7 +719,7 @@ async def test_message_channels_and_preview(seeded, mail):
     head = p.preview["lines"][0]
     assert head.startswith("To: ") and head.endswith("(2 people).") and "Arjun Mehta" in head and "Neha Iyer" in head
     assert "Message: Office closed Friday" in p.preview["lines"] and "Email: 1 will be emailed; 1 get the inbox copy only" in " ".join(p.preview["lines"])
-    assert p.preview["lines"][-1] == "Channels: Munshi inbox + email."          # 'sms' silently dropped
+    assert p.preview["lines"][-1] == "Channels: Purser inbox + email."          # 'sms' silently dropped
     _, out = await propose_and_confirm(priya, "send_message", {"audience": "all", "subject": "Close", "body": "Office closed Friday",
                                                               "channels": ["inbox", "email", "sms"]})
     assert out.receipt.effects[0]["inbox"] == 2 and out.receipt.effects[0]["email_queued"] == 1 and out.receipt.effects[0]["email_skipped"] == 1
@@ -762,7 +762,7 @@ async def test_onboarding_creates_everything_in_one_transaction(seeded):
     users_before, parties_before = await count(User), await count(Party)
     async with db.session_scope() as s:
         pv = await proposals.create(s, priya, "onboard_employee", args)
-    assert any("neha.kapoor@munshi.demo" in ln and "Sales" in ln for ln in pv.preview["lines"])
+    assert any("neha.kapoor@purser.demo" in ln and "Sales" in ln for ln in pv.preview["lines"])
     assert any("12 CL" in ln and "8 SL" in ln and "15 EL" in ln for ln in pv.preview["lines"])
     assert any("Reports to Priya Sharma" in ln for ln in pv.preview["lines"]) and any("5 tasks" in ln for ln in pv.preview["lines"])
     assert (await count(User), await count(Party)) == (users_before, parties_before)     # planning creates nothing
@@ -772,7 +772,7 @@ async def test_onboarding_creates_everything_in_one_transaction(seeded):
         u = await s.get(User, uid)
         party = await s.get(Party, u.party_id)
         assert (u.email, u.display_name, u.role, u.status, u.department, u.designation, u.reports_to_id, u.start_date) == (
-            "neha.kapoor@munshi.demo", "Neha Kapoor", "employee", "invited", "Sales", "Sales Executive", ids["priya_id"], date(2026, 12, 1))
+            "neha.kapoor@purser.demo", "Neha Kapoor", "employee", "invited", "Sales", "Sales Executive", ids["priya_id"], date(2026, 12, 1))
         assert (party.kind, party.workspace_id, party.name) == ("employee", 1, "Neha Kapoor") and not u.password_hash.startswith("munshi")
         tasks = (await s.execute(select(OnboardingTask).where(OnboardingTask.user_id == uid).order_by(OnboardingTask.id))).scalars().all()
         assert len(tasks) == 5 and [t.status for t in tasks].count("done") == 1 and tasks[0].status == "done" and tasks[0].done_by == ids["priya_id"]
@@ -799,7 +799,7 @@ async def test_onboarding_replay_creates_one_user(seeded):
 
 async def test_onboarding_rejects_duplicates_and_bad_input(seeded):
     priya = await make_actor(seeded)
-    assert await code_of(priya, "onboard_employee", {**ONBOARD, "work_email": "ARJUN@munshi.demo"}) == INVALID_STATE   # case-insensitive
+    assert await code_of(priya, "onboard_employee", {**ONBOARD, "work_email": "ARJUN@purser.demo"}) == INVALID_STATE   # case-insensitive
     await propose_and_confirm(priya, "onboard_employee", ONBOARD)
     assert await code_of(priya, "onboard_employee", ONBOARD) == INVALID_STATE                                         # derived email now taken
     assert await code_of(priya, "onboard_employee", {**ONBOARD, "name": "X"}) == VALIDATION
@@ -818,8 +818,8 @@ async def test_non_hr_cannot_onboard_and_invited_user_cannot_sign_in(seeded):
     assert await code_of(arjun, "onboard_employee", ONBOARD) == FORBIDDEN and await count(User) == users
     await propose_and_confirm(priya, "onboard_employee", ONBOARD)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=ORIGIN) as c:
-        for pw in ("munshi-demo", "", "password"):
-            assert (await c.post("/api/auth/login", json={"email": "neha.kapoor@munshi.demo", "password": pw})).status_code == 401
+        for pw in ("purser-demo", "", "password"):
+            assert (await c.post("/api/auth/login", json={"email": "neha.kapoor@purser.demo", "password": pw})).status_code == 401
 
 
 async def test_onboarding_welcome_email_follows_allowlist(seeded, mail):
@@ -966,7 +966,7 @@ async def test_onboarding_status_and_policy_tools(seeded):
 
 async def test_inbox_api_scoping(seeded):
     ids = seeded
-    priya_c, arjun_c, neha_c = await client_for(), await client_for("arjun@munshi.demo"), await client_for("neha@munshi.demo")
+    priya_c, arjun_c, neha_c = await client_for(), await client_for("arjun@purser.demo"), await client_for("neha@purser.demo")
     a = (await arjun_c.get("/api/inbox")).json()["messages"]
     assert [(m["ref"], m["from"], m["unread"], m["kind"]) for m in a] == [("M0", "Priya Sharma", True, "announcement")]
     assert (await neha_c.get("/api/inbox")).json() == {"messages": []} and (await priya_c.get("/api/inbox")).json() == {"messages": []}
@@ -983,7 +983,7 @@ async def test_inbox_api_scoping(seeded):
 
 async def test_person_and_leave_cards_api(seeded):
     ids = seeded
-    priya_c, arjun_c = await client_for(), await client_for("arjun@munshi.demo")
+    priya_c, arjun_c = await client_for(), await client_for("arjun@purser.demo")
     async with db.session_scope() as s:
         other = await seed(s, workspace_name="Other Co (SYNTHETIC)", email_domain="other.demo")
     neha_card = (await arjun_c.get(f"/api/people/{ids['neha_id']}")).json()
@@ -1005,7 +1005,7 @@ async def test_person_and_leave_cards_api(seeded):
 
 async def test_leave_requests_api(seeded):
     ids = seeded
-    priya_c, arjun_c, neha_c = await client_for(), await client_for("arjun@munshi.demo"), await client_for("neha@munshi.demo")
+    priya_c, arjun_c, neha_c = await client_for(), await client_for("arjun@purser.demo"), await client_for("neha@purser.demo")
     assert (await priya_c.get("/api/leave-requests?scope=bogus")).status_code == 400
     r = (await priya_c.get("/api/leave-requests?scope=awaiting_my_decision")).json()
     assert [(x["ref"], x["person"], x["type"], x["days"], x["state"]) for x in r["requests"]] == [(ids["neha_leave_ref"], "Neha Iyer", "CL", 2, "submitted")]
@@ -1019,7 +1019,7 @@ async def test_leave_requests_api(seeded):
 
 async def test_receipt_deliveries_api_scoping(seeded):
     ids = seeded
-    priya_c, arjun_c, neha_c = await client_for(), await client_for("arjun@munshi.demo"), await client_for("neha@munshi.demo")
+    priya_c, arjun_c, neha_c = await client_for(), await client_for("arjun@purser.demo"), await client_for("neha@purser.demo")
     async with db.session_scope() as s:
         await seed(s, workspace_name="Other Co (SYNTHETIC)", email_domain="other.demo")
     other_c = await client_for("priya@other.demo")

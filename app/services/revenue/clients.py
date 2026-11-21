@@ -1,6 +1,6 @@
 """Revenue clients = Party(kind="customer"). Ported from copilot services/invoices.py (client half).
 
-Names compare on Munshi's `normalize_name` (the same key resolve_party uses). A deleted client is archived:
+Names compare on Purser's `normalize_name` (the same key resolve_party uses). A deleted client is archived:
 kept with its history and restored when its name is added again.
 """
 

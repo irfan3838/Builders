@@ -8,13 +8,14 @@ from agents import RunContextWrapper, function_tool
 
 from app import db
 from app.agent import reading
-from app.agent.context import MunshiContext, safe_tool
+from app.agent.context import PurserContext, safe_tool
+from app.config import get_settings
 from app.errors import DomainError
 from app.models import Conversation
 from app.money import format_inr, rupees_to_paise
 from app.services import intake, records
 
-Ctx = RunContextWrapper[MunshiContext]
+Ctx = RunContextWrapper[PurserContext]
 
 
 def _view(fields: dict, arithmetic: str, doc_type: str) -> dict:
@@ -42,6 +43,7 @@ async def inspect_document(ctx: Ctx, document_id: int) -> dict:
     a = ctx.context.actor
     async with db.session_scope() as s:
         doc = await records.document(s, a, document_id)
+        doc_pages = doc.pages
         ex = await records.extraction(s, a, doc.id)
         if doc.outcome and doc.outcome not in ("claim", "bill"):
             return {"ok": True, "document_id": doc.id, "closed": True, "outcome": doc.outcome, "reason": doc.outcome_reason}
@@ -65,11 +67,14 @@ async def inspect_document(ctx: Ctx, document_id: int) -> dict:
                 conv.current_document_id = document_id
     ctx.context.show({"card": "source", "document_id": document_id, "highlight": ["vendor", "date", "total_paise"]})
     next_step = {
-        "contract": "Tell the user contract review is outside this release, then close_intake(outcome='contract_out_of_scope').",
+        "contract": "This is a contract: call review_contract(document_id) and follow the Contracts instructions.",
         "uncertain": "Ask the user what kind of document this is before doing anything else.",
         "bank_statement": "Bank statements are not supported yet; close_intake(outcome='unsupported').",
         "other": "Ask the user what this document is for; it does not look like a receipt or bill.",
     }.get(ex.doc_type, "Resolve the economic event: did an employee pay, did the company already pay, or is the vendor still owed?")
+    if ex.doc_type != "contract" and doc_pages > get_settings().upload_max_pages:
+        next_step = (f"This {doc_pages}-page document is too long for a bill or receipt (limit {get_settings().upload_max_pages} pages). "
+                     "Ask for the relevant pages only, then close_intake(outcome='unsupported').")
     if dups:
         next_step = "Probable duplicate found. Read it to the user and resolve before submitting anything. " + next_step
     return {"ok": True, "document_id": document_id, **_view(f, ex.arithmetic, ex.doc_type), "corrections": ex.corrections,
@@ -109,6 +114,9 @@ async def find_reservations(ctx: Ctx, document_id: int, employee_party_id: int) 
         ex = await records.extraction(s, a, document_id)
         f = records.effective_fields(ex) if ex else {}
         cands = await intake.reservation_candidates(s, a, f, employee_party_id)
+    covering = [c for c in cands if c["date_within_trip"]]
+    if covering:
+        ctx.context.show({"card": "claim_review", "document_id": document_id, "reservation_id": covering[0]["reservation_id"]})
     return {"ok": True, "reservations": cands,
             "guidance": "If exactly one matches and the user says this receipt is the full/final charge, use reservation_treatment='final'. "
                         "For a partial stay or unclear match, ask."}

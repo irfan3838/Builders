@@ -1,6 +1,6 @@
 """Exchange rates from Frankfurter (ECB reference rates, published once a working day ~16:00 CET).
 
-Ported from copilot services/fx.py, split in two for async Munshi:
+Ported from copilot services/fx.py, split in two for async Purser:
 - `refresh(s, currencies)` (async) fetches the latest quote with a 6 s timeout and caches it in `fx_quotes`.
   Callers run it *before* entering the sync revenue services, so a slow network never blocks the event loop.
 - `latest(ss, currency)` (sync) reads the newest cached quote. It is flagged stale when the last refresh

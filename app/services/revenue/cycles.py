@@ -1,4 +1,4 @@
-"""Ported from copilot services/cycles.py (user's own code), workspace-scoped for Munshi.
+"""Ported from copilot services/cycles.py (user's own code), workspace-scoped for Purser.
 
 A client's payment cycle: how much a month, billed every N months, in advance or in arrears, as one
 combined invoice per period or a separate invoice per month (raised and due together).

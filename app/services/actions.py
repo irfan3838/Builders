@@ -253,7 +253,7 @@ class Settle:
         after = _apply(before, committed=-rec.amount_paise, spent=rec.amount_paise)
         lines = [
             f"Record {format_inr(rec.amount_paise)} paid to {payee.name} against {rtype} {rec.ref}, reference {reference}, dated {_fmt_date(bdate)}.",
-            "This records a payment already made outside Munshi. No money is transferred.",
+            "This records a payment already made outside Purser. No money is transferred.",
             f"{line.category}: {format_inr(rec.amount_paise)} moves from committed to spent; available stays {format_inr(after['available_paise'])}.",
         ]
         speak = f"Record {format_inr(rec.amount_paise)} to {payee.name} against {rec.ref}, reference {reference}?"
@@ -488,7 +488,7 @@ class DecideLeave:
         verb = "Approve" if self.decision == "approve" else "Reject"
         lines = [f"{verb} leave {lr.ref}: {owner.display_name}, {lr.days} day(s) {LEAVE_NAMES[lr.leave_type]}, "
                  f"{_fmt_date(lr.start_date)} to {_fmt_date(lr.end_date)}.",
-                 f"{owner.display_name.split()[0]} is told in the Munshi inbox" + (" and by email." if owner.notify_email else ".")]
+                 f"{owner.display_name.split()[0]} is told in the Purser inbox" + (" and by email." if owner.notify_email else ".")]
         if self.decision == "reject" and args.get("note"):
             lines.append(f"Reason given: {args['note']}")
         return Plan(f"{verb} leave", lines, f"{verb} {owner.display_name}'s {lr.days}-day leave?",
@@ -529,7 +529,7 @@ async def _onboard_inputs(s, actor, args):
     email = (args.get("work_email") or "").strip().lower()
     if not email or "@" not in email:
         local = ".".join(normalize_part for normalize_part in name.lower().split())
-        email = f"{local}@munshi.demo"
+        email = f"{local}@purser.demo"
     if (await s.execute(select(User).where(User.email == email))).scalars().first():
         raise DomainError(INVALID_STATE, f"A login for {email} already exists.")
     manager = await people.user(s, actor, int(args["manager_user_id"])) if args.get("manager_user_id") else None
@@ -556,7 +556,7 @@ class OnboardEmployee:
                  f"Reports to {manager.display_name}." if manager else "No manager set yet.",
                  f"Leave balances for this year: {grants}.",
                  f"Onboarding checklist: {len(people.ONBOARDING_CHECKLIST)} tasks (laptop, KYC and bank details, policy acknowledgement, first-week plan).",
-                 f"Welcome message in the Munshi inbox; {mail}."]
+                 f"Welcome message in the Purser inbox; {mail}."]
         return Plan("Onboard employee", lines, f"Onboard {name} as {args.get('designation') or 'employee'} in "
                     f"{args.get('department') or 'the company'}, starting {_fmt_date(start)}?", [])
 
@@ -587,7 +587,7 @@ class OnboardEmployee:
         body = (f"Welcome to the team, {name.split()[0]}!\n\nYou join as {args.get('designation') or 'a team member'} in "
                 f"{args.get('department') or 'the company'} on {_fmt_date(start)}"
                 + (f", reporting to {manager.display_name}" if manager else "") + ".\n"
-                "Your Munshi account is ready: ask it about leave, expenses and policies by voice, in Hindi or English.\n"
+                "Your Purser account is ready: ask it about leave, expenses and policies by voice, in Hindi or English.\n"
                 "Before day one, please keep your PAN, Aadhaar and bank details ready.")
         sent = await messaging.compose(s, actor, [u], kind="welcome", subject="Welcome aboard", body=body,
                                        channels=["inbox", "email"], receipt_id=receipt_id)
@@ -642,7 +642,7 @@ class SendMessage:
             ok = verdicts.count("deliverable")
             lines.append(f"Email: {ok} will be emailed; {len(recipients) - ok} get the inbox copy only"
                          + (" (email not configured)." if "email_not_configured" in verdicts else " (no allow-listed address)." if ok < len(recipients) else "."))
-        lines.append("Channels: " + " + ".join("Munshi inbox" if c == "inbox" else "email" for c in channels) + ".")
+        lines.append("Channels: " + " + ".join("Purser inbox" if c == "inbox" else "email" for c in channels) + ".")
         kind = "announcement" if audience in ("all", "department") else "message"
         return Plan("Send announcement" if kind == "announcement" else "Send message", lines,
                     f"Send this {kind} to {names}?", [])
@@ -670,3 +670,8 @@ ACTIONS.update({a.kind: a for a in _BUDGET_ACTIONS})
 from app.services.revenue_actions import REVENUE_ACTIONS as _REVENUE_ACTIONS  # noqa: E402
 
 ACTIONS.update({a.kind: a for a in _REVENUE_ACTIONS})
+
+# Contracts (copilot contracts module, lean port): create, review flags, details, status, rescan.
+from app.services.contract_actions import CONTRACT_ACTIONS as _CONTRACT_ACTIONS  # noqa: E402
+
+ACTIONS.update({a.kind: a for a in _CONTRACT_ACTIONS})

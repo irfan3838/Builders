@@ -42,7 +42,7 @@ async def lifespan(_: FastAPI):
             try:
                 await messaging.dispatch()
             except Exception:
-                logging.getLogger("munshi.messaging").exception("dispatch sweep failed")
+                logging.getLogger("purser.messaging").exception("dispatch sweep failed")
             await asyncio.sleep(30)
 
     task = asyncio.create_task(sweeper())
@@ -50,7 +50,11 @@ async def lifespan(_: FastAPI):
     task.cancel()
 
 
-app = FastAPI(title="Munshi", docs_url=None, redoc_url=None, lifespan=lifespan)
+app = FastAPI(title="Purser", docs_url=None, redoc_url=None, lifespan=lifespan)
+
+from app.api.workspace import router as workspace_router  # noqa: E402
+
+app.include_router(workspace_router)
 
 
 @app.exception_handler(DomainError)
@@ -306,7 +310,7 @@ async def inbox(actor: Actor = auth.ActorDep) -> dict:
         rows = (await s.execute(select(Message, User.display_name).join(User, User.id == Message.sender_id, isouter=True).where(
             Message.workspace_id == actor.workspace_id, Message.recipient_user_id == actor.user_id, Message.channel == "inbox")
             .order_by(Message.id.desc()).limit(10))).all()
-    return {"messages": [{"ref": m.ref, "from": n or "Munshi", "subject": m.subject, "body": m.body, "kind": m.kind,
+    return {"messages": [{"ref": m.ref, "from": n or "Purser", "subject": m.subject, "body": m.body, "kind": m.kind,
                           "unread": m.read_at is None, "at": m.created_at.isoformat()} for m, n in rows]}
 
 
@@ -391,6 +395,69 @@ async def revenue_fx(fy: str | None = None, currency: str | None = None, actor: 
     return await _revenue_read(actor, lambda ss, rv: reads.fx_view(ss, rv, f, currency, history=True))
 
 
+@app.get("/api/contracts/review/{document_id}")
+async def contract_review_view(document_id: int, actor: Actor = auth.ActorDep) -> dict:
+    """The staged (not yet saved) review of an uploaded contract."""
+    from app.agent.tools.contracts import _staged_view
+    from app.services import records
+    from app.services.contracts import review
+
+    review.require_view(actor)
+    async with db.session_scope() as s:
+        await records.document(s, actor, document_id)
+        ex = await records.extraction(s, actor, document_id)
+    st = (ex.fields or {}).get("contract_review") if ex else None
+    if not st and ex is not None and ex.doc_type == "contract":
+        review.prefetch(actor, document_id)  # (re)start a review that is not running, e.g. after a restart
+    return {"pending": True} if not st else {"pending": False, **_staged_view(document_id, st)}
+
+
+@app.get("/api/contracts/liabilities")
+async def contract_liabilities(bearer: str | None = None, risk: str | None = None, counterparty: str | None = None,
+                               contract: str | None = None, undecided_only: bool = False, actor: Actor = auth.ActorDep) -> dict:
+    from app.services.contracts import store
+
+    async with db.session_scope() as s:
+        rows = await store.liabilities(s, actor, bearer=bearer, risk=risk, counterparty=counterparty, contract=contract,
+                                       include_decided=not undecided_only)
+    return {"rows": rows, "filters": {"bearer": bearer, "risk": risk, "counterparty": counterparty, "contract": contract,
+                                      "undecided_only": undecided_only}}
+
+
+@app.get("/api/contracts/deadlines")
+async def contract_deadlines_view(days: int = 90, actor: Actor = auth.ActorDep) -> dict:
+    from app.services.contracts import store
+
+    async with db.session_scope() as s:
+        return {"days": days, "rows": await store.deadlines(s, actor, days)}
+
+
+@app.get("/api/contracts/findings/{finding_id}/context")
+async def contract_clause_context(finding_id: int, actor: Actor = auth.ActorDep) -> dict:
+    """The contract text around a finding, with the cited span (and any carve-out spans) as offsets into the excerpt."""
+    from app.services.contracts import store
+
+    async with db.session_scope() as s:
+        f, c = await store.finding(s, actor, finding_id)
+        view = store.finding_view(f, c)
+        a, b = max(0, f.start - 700), min(len(c.text), f.stop + 700)
+        marks = [{"start": f.start - a, "stop": f.stop - a, "kind": "finding"}]
+        for co in f.carve_outs or []:
+            if a <= co["start"] and co["stop"] <= b:
+                marks.append({"start": co["start"] - a, "stop": co["stop"] - a, "kind": "carve_out"})
+        return {**view, "excerpt": c.text[a:b], "marks": marks, "clipped_start": a > 0, "clipped_end": b < len(c.text)}
+
+
+@app.get("/api/contracts/{ref}")
+async def contract_view(ref: str, actor: Actor = auth.ActorDep) -> dict:
+    from app.services.contracts import store
+
+    async with db.session_scope() as s:
+        c = await store.by_mention(s, actor, ref)
+        fs, ds = await store.load_full(s, c)
+        return store.contract_view(c, fs, ds)
+
+
 @app.get("/api/receipts/{receipt_id}/deliveries")
 async def receipt_deliveries(receipt_id: int, actor: Actor = auth.ActorDep) -> dict:
     from app.models import Message, User
@@ -419,7 +486,7 @@ async def voice_session(body: SDPIn, actor: Actor = auth.ActorDep) -> dict:
     try:
         return await live_bridge.start(actor, body.sdp, body.wake_text)
     except APIError as e:
-        logging.getLogger("munshi.live").error("live.create failed: %s", getattr(e, "status_code", "?"))
+        logging.getLogger("purser.live").error("live.create failed: %s", getattr(e, "status_code", "?"))
         raise HTTPException(502, "Voice session could not start. Use push-to-talk or type instead.") from e
 
 

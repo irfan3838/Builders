@@ -8,12 +8,12 @@ from typing import Literal
 from agents import RunContextWrapper, function_tool
 
 from app import db
-from app.agent.context import MunshiContext, safe_tool
+from app.agent.context import PurserContext, safe_tool
 from app.errors import NOT_FOUND, DomainError
 from app.models import Proposal
 from app.services import confirmation, proposals
 
-Ctx = RunContextWrapper[MunshiContext]
+Ctx = RunContextWrapper[PurserContext]
 
 
 def _proposal_view(p: Proposal) -> dict:
@@ -37,6 +37,8 @@ async def propose_submit_claim(ctx: Ctx, document_id: int, beneficiary_party_id:
     """Propose submitting an employee-paid expense as a reimbursement claim. Amount/date/merchant come from the
     inspected document. Use reservation_treatment='final' only when the user confirmed this receipt is the final
     charge for that reservation."""
+    if reservation_id:
+        ctx.context.show({"card": "claim_review", "document_id": document_id, "reservation_id": reservation_id})
     return await _propose(ctx, "submit_claim", {"document_id": document_id, "beneficiary_party_id": beneficiary_party_id,
                                                 "category": category, "reservation_id": reservation_id,
                                                 "reservation_treatment": reservation_treatment if reservation_id else "none"})
@@ -56,13 +58,15 @@ async def propose_submit_bill(ctx: Ctx, document_id: int, category: str, vendor_
 @safe_tool
 async def propose_approval(ctx: Ctx, ref: str) -> dict:
     """Propose approving a submitted claim (C…) or vendor bill (B…). Shows the exact budget effect."""
+    if ref.strip().upper().startswith("C"):
+        ctx.context.show({"card": "claim_review", "ref": ref.strip().upper()})
     return await _propose(ctx, "approve", {"ref": ref})
 
 
 @function_tool
 @safe_tool
 async def propose_settlement(ctx: Ctx, ref: str, reference: str, business_date: str | None = None) -> dict:
-    """Propose recording that an approved claim or bill was paid in full outside Munshi (no money moves).
+    """Propose recording that an approved claim or bill was paid in full outside Purser (no money moves).
     reference = UTR/cheque/transaction reference the user gave; business_date YYYY-MM-DD (default today)."""
     return await _propose(ctx, "settle", {"ref": ref, "reference": reference, "business_date": business_date})
 

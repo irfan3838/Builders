@@ -1,4 +1,4 @@
-"""Ported from copilot services/project_end.py (user's own code), workspace-scoped for Munshi.
+"""Ported from copilot services/project_end.py (user's own code), workspace-scoped for Purser.
 
 A project is over: what happens to its pending invoices, then the client is ended.
 

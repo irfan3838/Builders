@@ -49,7 +49,7 @@ async def priya_arjun(ids):
     return await make_actor(ids, "priya"), await make_actor(ids, "arjun")
 
 
-async def client_for(email, password="munshi-demo"):
+async def client_for(email, password="purser-demo"):
     c = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=ORIGIN, headers={"origin": ORIGIN})
     r = await c.post("/api/auth/login", json={"email": email, "password": password})
     assert r.status_code == 200, r.text
@@ -137,24 +137,30 @@ async def test_receivables_totals_and_rows_match_sql(seeded):
     priya = await make_actor(seeded)
     out = await run(priya, measures=["receivables_outstanding"], dimension="customer")
     expected = dict(await sql("""
-        select p.name, sum(i.amount_paise - i.paid_paise) from invoices i join parties p on p.id = i.customer_party_id
-        where i.workspace_id=:w and i.amount_paise - i.paid_paise > 0 group by p.name""", w=seeded["workspace_id"]))
+        select p.name, sum(greatest(i.amount_paise - i.paid_paise - i.moved_paise, 0)) from invoices i
+        join parties p on p.id = i.customer_party_id
+        where i.workspace_id=:w and i.status in ('sent', 'part_paid') and p.archived_at is null
+          and i.amount_paise - i.paid_paise - i.moved_paise > 0 group by p.name""", w=seeded["workspace_id"]))
     got = {r["key"]: r["values"]["receivables_outstanding"] for r in out["rows"]}
     assert got == {k: int(v) for k, v in expected.items()}
-    assert out["totals"]["receivables_outstanding"] == sum(int(v) for v in expected.values()) == 54_270_000
-    assert out["meta"]["source_record_count"] == 6
+    assert out["totals"]["receivables_outstanding"] == sum(int(v) for v in expected.values()) == 64_855_000
+    # 6 legacy open invoices (54,27,000) + Northwind Oct balance (65,850) + Orbit Aug (40,000); drafts / paid / to_raise excluded
+    assert out["meta"]["source_record_count"] == 8
 
 
 async def test_overdue_total_and_filters_match_sql(seeded):
     priya = await make_actor(seeded)
     out = await run(priya, measures=["receivables_outstanding"], dimension="customer", overdue_only=True)
     expected = await sql("""
-        select p.name, sum(i.amount_paise - i.paid_paise) from invoices i join parties p on p.id = i.customer_party_id
-        where i.workspace_id=:w and i.due_date < :t and i.amount_paise - i.paid_paise > 0 group by p.name""",
+        select p.name, sum(greatest(i.amount_paise - i.paid_paise - i.moved_paise, 0)) from invoices i
+        join parties p on p.id = i.customer_party_id
+        where i.workspace_id=:w and i.status in ('sent', 'part_paid') and p.archived_at is null and i.due_date < :t
+          and i.amount_paise - i.paid_paise - i.moved_paise > 0 group by p.name""",
                          w=seeded["workspace_id"], t=TODAY)
     assert {r["key"]: r["values"]["receivables_outstanding"] for r in out["rows"]} == {k: int(v) for k, v in expected}
-    assert out["totals"]["receivables_outstanding"] == 23_470_000
-    assert {r["key"] for r in out["rows"]} == {"Acme Traders", "Nimbus Retail", "Lotus Hospitality"}
+    assert out["totals"]["receivables_outstanding"] == 34_055_000  # 2,34,700 legacy + 65,850 Northwind Oct + 40,000 Orbit Aug
+    assert {r["key"] for r in out["rows"]} == {"Acme Traders", "Nimbus Retail", "Lotus Hospitality",
+                                               "Northwind Labs (synthetic)", "Orbit Design Studio (synthetic)"}
 
 
 async def test_date_range_filter_matches_sql(seeded):
@@ -202,10 +208,10 @@ async def test_top_n_folds_into_other_keeping_totals_and_refs(seeded):
     keys = [r["key"] for r in out["rows"]]
     assert keys == ["Patel Agro Exports", "Acme Traders", "Other"]
     other = out["rows"][-1]
-    assert other["values"]["receivables_outstanding"] == 6_000_000 + 8_250_000 + 2_720_000
+    assert other["values"]["receivables_outstanding"] == 8_250_000 + 6_585_000 + 6_000_000 + 4_000_000 + 2_720_000
     full_refs = {x for r in full["rows"] for x in r["refs"]}
     assert {x for r in out["rows"] for x in r["refs"]} == full_refs
-    assert set(other["refs"]) == {"INV-2026-118", "INV-2026-097", "INV-2026-104"}
+    assert set(other["refs"]) == {"INV-2026-118", "INV-2026-097", "INV-2026-104", "INV-2026-0008", "INV-2026-0016"}
 
 
 async def test_series_fold_over_three_keeps_totals(seeded):
@@ -216,7 +222,7 @@ async def test_series_fold_over_three_keeps_totals(seeded):
     series = {r["series"] for r in out["rows"]}
     assert len(series) == 4 and "Other" in series  # 3 kept + Other
     assert out["meta"]["folded"]["series"]["kept"] == 3
-    assert {x for r in out["rows"] for x in r["refs"]} == {n for (n,) in await sql("select number from invoices")}
+    assert {x for r in out["rows"] for x in r["refs"]} == {n for (n,) in await sql("select coalesce(number, ref) from invoices")}
 
 
 # ---------------------------------------------------------------- 4. revision keeps grouping
@@ -233,7 +239,7 @@ async def test_overdue_revision_keeps_dimension_and_lineage(seeded):
         assert child.parent_id == parent.id
         assert child.meta["lineage"] == parent.id == child2.meta["lineage"]
         assert parent.meta["lineage"] == parent.id
-        assert child.totals["receivables_outstanding"] == 23_470_000
+        assert child.totals["receivables_outstanding"] == 34_055_000
 
 
 def test_add_filters_replaces_and_clear_filters():
@@ -332,22 +338,22 @@ async def test_snapshot_load_other_actor_and_workspace(seeded):
         assert e.value.code == NOT_FOUND
         # the other workspace's own chart has other numbers and is not mixed with ours
     out = await run(other_priya, measures=["receivables_outstanding"])
-    assert out["totals"]["receivables_outstanding"] == 54_270_000  # same seed data, own workspace rows only
+    assert out["totals"]["receivables_outstanding"] == 64_855_000  # same seed data, own workspace rows only
     async with db.session_scope() as s:
         n = (await s.execute(text("select count(*) from invoices"))).scalar_one()
-    assert n == 12 and out["meta"]["source_record_count"] == 6
+    assert n == 32 and out["meta"]["source_record_count"] == 8  # 16 invoices per workspace
 
 
 async def test_http_snapshot_access(seeded):
     priya, _ = await priya_arjun(seeded)
     sid = await build(priya, measures=["receivables_outstanding"], dimension="customer")
-    owner = await client_for("priya@munshi.demo")
-    arjun_c = await client_for("arjun@munshi.demo")
+    owner = await client_for("priya@purser.demo")
+    arjun_c = await client_for("arjun@purser.demo")
     try:
         r = await owner.get(f"/api/snapshots/{sid}")
         assert r.status_code == 200
         body = r.json()
-        assert body["totals"]["receivables_outstanding"] == {"value": 54_270_000, "display": "₹5,42,700"}
+        assert body["totals"]["receivables_outstanding"] == {"value": 64_855_000, "display": "₹6,48,550"}
         assert (await arjun_c.get(f"/api/snapshots/{sid}")).status_code == 404
         assert (await owner.get("/api/snapshots/nope")).status_code == 404
     finally:
@@ -375,7 +381,7 @@ async def test_filter_ambiguous_unknown_and_exclude(seeded):
     ex = await run(priya, measures=["receivables_outstanding"], dimension="customer",
                    filters=[{"dimension": "customer", "values": ["Patel"], "exclude": True}])
     assert "Patel Agro Exports" not in {r["key"] for r in ex["rows"]}
-    assert ex["totals"]["receivables_outstanding"] == 54_270_000 - 21_000_000
+    assert ex["totals"]["receivables_outstanding"] == 64_855_000 - 21_000_000
 
 
 @pytest.mark.parametrize("evil", ["x' OR 1=1 --", "'; DROP TABLE invoices; --", "%", "_", "Acme%' --", "\\"])
@@ -388,7 +394,7 @@ async def test_injection_strings_just_fail_to_match(seeded, evil):
     if evil != "Acme%' --":
         assert e.value.code == VALIDATION
     (n,) = await sql("select count(*) from invoices")
-    assert n[0] == 6
+    assert n[0] == 16  # nothing dropped: 6 legacy + 10 revenue-seed invoices
 
 
 # ---------------------------------------------------------------- 8. budget after the golden path
@@ -417,7 +423,7 @@ async def test_budget_available_after_golden_path(seeded):
 # ---------------------------------------------------------------- 9. tool wiring
 
 def test_agent_tools_wired_and_strict_schemas_build():
-    from app.agent.munshi import ALL_TOOLS
+    from app.agent.purser import ALL_TOOLS
     names = {t.name for t in ALL_TOOLS}
     want = {"describe_chart_options", "build_chart", "revise_chart", "read_chart_value", "present_view"}
     assert want <= names

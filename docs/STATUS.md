@@ -1,4 +1,4 @@
-# Munshi: build status
+# Purser: build status
 
 Updated 2026-11-21 (IST). Branch `build/munshi-mvp`. Freeze **Sun 2026-11-22 14:00 IST**.
 Plans: `docs/PLAN_v4.md` (finance core), `docs/PLAN_v5_people_ops.md` (HR scope).
@@ -9,12 +9,12 @@ Deployment status: **LOCAL ONLY**. Nothing is provisioned on AWS.
 ## 1. Completed
 
 ### 1.1 Voice (hour-0 spike, then productionised)
-- GPT-Live-1.1 over browser WebRTC with **client delegation**. Each delegated request runs the Munshi agent on the server, and the answer goes back through `session.commentary.append` (`app/voice/live_bridge.py`, `POST /api/voice/session`).
+- GPT-Live-1.1 over browser WebRTC with **client delegation**. Each delegated request runs the Purser agent on the server, and the answer goes back through `session.commentary.append` (`app/voice/live_bridge.py`, `POST /api/voice/session`).
 - A Python **sideband** connection records server-observed transcripts (`session.input_transcript.delta`) as `VoiceTurn` rows, deduplicated by `event_id`. This is what makes a spoken "haan" count as a confirmation.
-- Wake word "Munshi" (`web/src/wake.ts`). The user tested the spike by voice (`spikes/voice_spike`).
+- Wake word "Purser" (`web/src/wake.ts`). The user tested the spike by voice (`spikes/voice_spike`).
 
 ### 1.2 Agent (OpenAI Agents SDK)
-- A single `MunshiAgent` (`app/agent/munshi.py`, prompt in `app/agent/prompts/munshi.md`) with `RunContextWrapper[MunshiContext]`. Tools read the actor and workspace from that context, never from model arguments.
+- A single `PurserAgent` (`app/agent/purser.py`, prompt in `app/agent/prompts/purser.md`) with `RunContextWrapper[PurserContext]`. Tools read the actor and workspace from that context, never from model arguments.
 - Conversation memory is a `SQLAlchemySession` keyed by conversation.
 - A vision `ExtractorAgent` (`app/agent/extractor.py`) produces structured output and has no tools. Arithmetic is checked in Python afterwards.
 - There are 62 tools (44 below + 18 revenue tools, section 2.3c):
@@ -46,7 +46,7 @@ Deployment status: **LOCAL ONLY**. Nothing is provisioned on AWS.
   - size, page count and type sniffing; encrypted or unreadable files are rejected;
   - SHA-256 replay detection and probable-duplicate checks;
   - reservation matching;
-  - contracts and unsupported documents close with no finance write.
+  - contracts go to contract review (2.3d); unsupported documents close with no finance write.
 - **Records and audit trail** (`records.py`, `audit.py`).
 
 ### 1.5 People ops (PLAN_v5)
@@ -93,7 +93,7 @@ Deployment status: **LOCAL ONLY**. Nothing is provisioned on AWS.
 - `CLAUDE.md` and `docs/AUTHORSHIP.md` are kept truthful. `.env` is gitignored.
 
 ### 1.10 Commits
-- `9b3416b feat: Munshi voice finance agent MVP (local)`, the checkpoint commit.
+- `9b3416b feat: Purser voice finance agent MVP (local)`, the checkpoint commit.
 - **The HR round is uncommitted** (see section 2.1).
 
 ---
@@ -186,6 +186,28 @@ What is built:
 - [ ] Sonnet gate `tests/test_revenue_core.py` (agent `sonnet-tester-revenue-core`), then a second fresh gate for FX / cycles / balance / project end.
 - Known: reply latency 7–16 s per turn (see 2.2).
 
+### 2.3d Contracts and liabilities, ported from the user's copilot (BUILT, Sonnet gate running)
+Source: `~/Projects/copilot/contracts/CONTRACT_MANAGEMENT_SYSTEM.md` + `contracts/backend/ctr_mod`. Plan: `~/.claude/plans/pasted-content-id-c87b-linked-magpie-*.md`. Lean scope: no approval chains, amendments, bulk upload, settings UI, precision holding or Excel.
+
+What is built:
+- [x] **Migration `07fe5cf9e50b_contracts`**: `contracts`, `contract_findings` (copilot clause row + bearer, beneficiary, trigger, cap, cap basis, carve-outs, notice days), `contract_deadlines`.
+- [x] **Reading** (`app/services/contracts/reading.py`): PDF text layer first, OpenAI vision transcription for scanned pages, DOCX via the standard library. Contract limits 15 pages / 25 MB (bills keep 5 / 10).
+- [x] **Scan** (`scan.py`, copilot `risk_scan.py` logic unchanged; model client swapped to OpenAI structured output), **catalogue** (copilot's 12 clause types and regexes, unchanged), **metadata** (copilot rules; our names = `OUR_PARTY_NAMES` + workspace name).
+- [x] **Liabilities** (`liability.py`, new): the model only points at phrases; code grounds every phrase in the text, resolves the bearer (defined terms → named party → us/counterparty; "we are the service provider" fallback; else `unclear`), parses caps to paise, carve-outs, notice and survival periods, and computes deadlines (expiry, renewal-notice cut-off, survival end).
+- [x] **Review is staged and non-blocking**: starts in the background when a document is classified as a contract; `review_contract` waits at most 25 s, then the card fills in by itself.
+- [x] **5 confirmed actions** (create, review flag accept/reject/modify, details, status, rescan) and **11 agent tools**; attention items carry contract deadlines (30 days) and open flags.
+- [x] **UI**: contract review, contract, liabilities, deadlines and clause-excerpt cards; risk written as text. Checked in the browser (text PDF and scanned PDF).
+- [x] **Seed**: 4 synthetic agreements (`seed/contract_samples.py`), read with rules only; files in `evals/contracts/` (`scripts/make_contract_samples.py`), plus a fresh live-demo MSA (text, DOCX, scanned).
+- [x] **Real agent (text harness, Hinglish)**: upload → review → propose → "haan" → AG5 receipt → "kaunse liabilities humpe hain" → "agle 60 din ki deadlines".
+- [ ] Sonnet gate `tests/test_contracts.py`.
+- Known: a copilot pattern also flags the "data breach" carve-out sentence as Data loss liability (a second row); Legal's reject is the remedy.
+
+### 2.3e Charts from the copilot catalogue (BUILT, Sonnet gate running)
+- [x] New chart types: pie, treemap (flat or nested), heatmap, calendar heatmap, sankey. Time grains day / week / FY quarter / FY. `compare`: prev_period, yoy (two aligned series) and mom (% change column).
+- [x] New measures and sources: budget utilisation % (true ratio of summed parts), budget flows (transfers / top-ups / reductions as from-to), contracts (liability count, stated caps, contract count).
+- [x] Renderers in `web/src/ChartCard.tsx` (ECharts); sequential green ramp for heatmaps. Checked in the browser (utilisation heatmap, treemap, quarter comparison in one view).
+- [ ] Sonnet gate `tests/test_charts_v2.py`.
+
 ### 2.4 Roles and failure paths (PLAN_v4 H13–15)
 - [ ] Confirm the gates already covered by the existing tests:
   - an employee cannot view another person's claim or approve a bill;
@@ -194,23 +216,23 @@ What is built:
 - [ ] Add a test for any of these that is missing.
 - [ ] Do one uninterrupted session covering every advertised workflow, logged in as Priya and as Arjun.
 
-### 2.5 AWS deployment (needs **explicit spend authorisation** first)
-- [ ] Read-only preflight:
-  - `aws sts get-caller-identity`, the region, and any ACM certificates or Route 53 zones;
-  - service quotas;
-  - a cost estimate covering ALB, Fargate at 0.5 vCPU / 1 GB, RDS `db.t4g.micro`, S3, Secrets Manager and CloudWatch, with no NAT.
-
-  The aws-mcp server failed to connect this session, so use the AWS CLI.
-- [ ] Ask the user to authorise spend and show them the estimate.
-- [ ] Write a multi-stage `Dockerfile` (Vite build served by FastAPI) and `.dockerignore`. Neither exists yet.
-- [ ] Terraform in `infra/terraform/`, which does not exist yet:
-  - networking: a VPC with public subnets for Fargate and private subnets for RDS;
-  - HTTPS: an ALB, with ACM if there is a domain, otherwise CloudFront on its default domain. HTTPS is needed for mic access;
-  - compute and storage: ECS Fargate, ECR, RDS Postgres, and a private S3 bucket with a gateway endpoint;
-  - Secrets Manager for the OpenAI key, DB credentials, session secret and Gmail app password, plus CloudWatch logs;
-  - a one-off migration and seed task.
-- [ ] Storage adapter: switch from the local filesystem to S3 in AWS.
-- [ ] Gate: `/health` returns 200 over HTTPS, and the spoken golden path works on the live URL. Otherwise record the blocker as **BLOCKED**.
+### 2.5 AWS deployment (us-west-2): infra DEPLOYED, golden path not yet verified live
+- [x] Preflight run (quotas OK, no ACM certificate or Route 53 zone). Spend authorised by the user: 1 vCPU / 2 GB, about $8-9 per 72 h.
+- [x] `Dockerfile` + `.dockerignore`. Image `munshi:e3d276e` pushed to ECR.
+- [x] Terraform `infra/terraform/` applied (36 resources, local state):
+  - CloudFront → ALB (CloudFront-only, secret origin header) → ECS Fargate (1 task), RDS Postgres 16 (private), S3 (private) and Secrets Manager;
+  - see `docs/deployment.md`.
+- [x] Secrets copied with `scripts/aws_put_secrets.py`, which needs `uv run --with "botocore[crt]"` for `aws login` credentials.
+- [x] `scripts/aws_run_task.sh migrate`: all 4 migrations ran on RDS.
+- [x] Service redeployed and stable, all checks on https://d342yicbppf96p.cloudfront.net:
+  - `/health` returns 200 and the UI returns 200;
+  - `/api/revenue/overview` returns 401 when not signed in;
+  - the ALB is not reachable directly.
+- [x] Seeded the synthetic demo data with `SEED_ADMIN_NAME="Irfan" scripts/aws_run_task.sh seed-reset` (image `e3d276e-seedname`; the user chose to keep `munshi-demo`).
+  - Admin login: `irfan@munshi.demo`. Arjun and Neha are unchanged. Local and tests keep Priya as the default.
+  - Live login verified. The revenue overview matches local: ₹6,48,550 outstanding, ₹3,40,550 overdue.
+- [ ] Gate: the spoken golden path on the live URL.
+- Note: `d29t355negkoac.cloudfront.net` (E10FB7XHWO0D0V, EC2 origin) is a Workshop Studio distribution, not ours. Leave it alone.
 
 ### 2.6 Evaluation set (`evals/`, only `evals/dev/` exists so far)
 - [ ] Freeze the expected outcomes in `cases.yaml` **before** running anything.
@@ -255,6 +277,7 @@ Cut in this order: budget transfer, then slide polish, then the briefing. If voi
 - Never expose `OPENAI_API_KEY` or the Gmail app password. `.env` is never committed. In AWS, secrets come from Secrets Manager.
 - Real email goes only to `EMAIL_ALLOWED_RECIPIENTS`.
 - No AWS spend or provisioning without explicit authorisation.
+- Organiser rule: no GPUs and no Amazon Bedrock (or AgentCore) anywhere in the AWS deployment. AI stays on the OpenAI API; compute is CPU-only Fargate.
 - Only Sonnet subagents write or run tests, and each set of tests uses a **new** Sonnet agent.
 - Label synthetic data. Use Equal's palette only.
 - Commit only when asked, and on a branch.

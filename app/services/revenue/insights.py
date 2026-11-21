@@ -1,4 +1,4 @@
-"""Ported from copilot services/insights.py (user's own code), workspace-scoped for Munshi.
+"""Ported from copilot services/insights.py (user's own code), workspace-scoped for Purser.
 
 The client-income dashboard, for one FY: every figure is summed here from the stored rows (paise)."""
 

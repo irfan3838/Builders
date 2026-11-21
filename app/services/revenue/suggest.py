@@ -1,4 +1,4 @@
-"""Ported from copilot services/suggest.py (user's own code), workspace-scoped for Munshi.
+"""Ported from copilot services/suggest.py (user's own code), workspace-scoped for Purser.
 
 What the finance user should do next, from the rows alone (no model): recomputed on every read, so a suggestion
 disappears the moment its row changes.
@@ -45,7 +45,7 @@ class Suggestion:
     priority: Priority
     title: str
     detail: str
-    act: str | None = None  # what Munshi offers to do: a propose_* tool on `ref` (an invoice S…, client, reminder)
+    act: str | None = None  # what Purser offers to do: a propose_* tool on `ref` (an invoice S…, client, reminder)
     ref: str | None = None
     ask: str | None = None  # words for the Workspace chat
     alt_act: str | None = None  # a second button on the same row (the check-in's "Not yet")

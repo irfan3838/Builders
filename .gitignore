@@ -64,3 +64,6 @@ tmp/
 spikes/voice_spike/evidence/
 .uploads/
 .playwright-mcp/
+
+# Terraform variable values (may hold personal emails)
+infra/terraform/terraform.tfvars

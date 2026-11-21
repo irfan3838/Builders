@@ -9,11 +9,11 @@ from dataclasses import dataclass, field
 from app.actor import Actor
 from app.errors import DomainError
 
-log = logging.getLogger("munshi.tools")
+log = logging.getLogger("purser.tools")
 
 
 @dataclass
-class MunshiContext:
+class PurserContext:
     """Passed to every tool via RunContextWrapper. Identity comes only from here, never from model args."""
 
     actor: Actor

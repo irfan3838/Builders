@@ -1,4 +1,4 @@
-"""GPT-Live sideband bridge: server-observed transcripts -> voice_turns; delegations -> MunshiAgent;
+"""GPT-Live sideband bridge: server-observed transcripts -> voice_turns; delegations -> PurserAgent;
 results -> session.commentary.append. Proven in spikes/voice_spike (docs/architecture.md)."""
 
 from __future__ import annotations
@@ -14,11 +14,11 @@ from app.agent.runner import run_turn
 from app.config import get_settings
 from app.services import confirmation, proposals
 
-log = logging.getLogger("munshi.live")
+log = logging.getLogger("purser.live")
 _client: AsyncOpenAI | None = None
 _tasks: dict[str, asyncio.Task] = {}
 
-FRONTEND_INSTRUCTIONS = """You are Munshi, a voice finance assistant for an Indian company. Speak briefly and warmly.
+FRONTEND_INSTRUCTIONS = """You are Purser, a voice finance assistant for an Indian company. Speak briefly and warmly.
 Match the user's language: Hindi, English or Hinglish.
 For ANY request about budgets, bills, claims, receipts, invoices, payments, approvals or documents, delegate to the backend. This includes "yes", "haan", "no", "cancel" and corrections, because those answer a pending question.
 Speak only what the backend returns. Never state an amount, name, date or status the backend did not give you.
@@ -36,7 +36,7 @@ def client() -> AsyncOpenAI:
 
 def session_config(wake_text: str | None = None) -> dict:
     if wake_text:
-        opener = (f"The user woke you by saying 'Munshi' and continued: «{wake_text[:300]}». "
+        opener = (f"The user woke you by saying 'Purser' and continued: «{wake_text[:300]}». "
                   "Treat that as their request: delegate it to the backend now and speak the answer.")
     else:
         opener = "The user just said your name to wake you. Greet them in at most three words, in Hinglish, e.g. 'Haan ji, boliye?'"

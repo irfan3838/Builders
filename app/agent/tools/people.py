@@ -9,12 +9,12 @@ from agents import RunContextWrapper, function_tool
 from sqlalchemy import select
 
 from app import db
-from app.agent.context import MunshiContext, safe_tool
+from app.agent.context import PurserContext, safe_tool
 from app.agent.tools.proposals import _propose
 from app.models import Message, User
 from app.services import people
 
-Ctx = RunContextWrapper[MunshiContext]
+Ctx = RunContextWrapper[PurserContext]
 
 
 def _person(u: User, private: bool) -> dict:
@@ -99,7 +99,7 @@ async def propose_message(ctx: Ctx, audience: Literal["person", "department", "a
                           user_ids: list[int] | None = None, department: str | None = None,
                           channels: list[Literal["inbox", "email"]] | None = None) -> dict:
     """Propose sending a message or announcement. Draft the subject and body yourself in the user's language and
-    tone; the preview shows exact text, recipients and channels. channels default to the Munshi inbox; add 'email'
+    tone; the preview shows exact text, recipients and channels. channels default to the Purser inbox; add 'email'
     when the user asks for email."""
     return await _propose(ctx, "send_message", {"audience": audience, "subject": subject, "body": body, "user_ids": user_ids,
                                                 "department": department, "channels": channels or ["inbox"]})
@@ -108,7 +108,7 @@ async def propose_message(ctx: Ctx, audience: Literal["person", "department", "a
 @function_tool
 @safe_tool
 async def read_inbox(ctx: Ctx, unread_only: bool = True, limit: int = 5) -> dict:
-    """The speaker's Munshi inbox (announcements, leave decisions, messages), newest first. Marks returned items read."""
+    """The speaker's Purser inbox (announcements, leave decisions, messages), newest first. Marks returned items read."""
     a = ctx.context.actor
     async with db.session_scope() as s:
         q = select(Message, User.display_name).join(User, User.id == Message.sender_id, isouter=True).where(
@@ -120,7 +120,7 @@ async def read_inbox(ctx: Ctx, unread_only: bool = True, limit: int = 5) -> dict
         for m, _ in rows:
             m.read_at = m.read_at or now
     ctx.context.show({"card": "inbox"})
-    return {"ok": True, "messages": [{"ref": m.ref, "from": name or "Munshi", "subject": m.subject, "body": m.body,
+    return {"ok": True, "messages": [{"ref": m.ref, "from": name or "Purser", "subject": m.subject, "body": m.body,
                                       "at": m.created_at.isoformat()} for m, name in rows]}
 
 

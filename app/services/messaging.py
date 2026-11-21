@@ -19,7 +19,7 @@ from app.actor import Actor
 from app.config import get_settings
 from app.models import Message, User
 
-log = logging.getLogger("munshi.messaging")
+log = logging.getLogger("purser.messaging")
 
 
 def email_plan(user: User) -> tuple[str | None, str]:
@@ -61,11 +61,11 @@ async def compose(s: AsyncSession, actor: Actor, recipients: list[User], *, kind
 def _send_smtp(to: str, subject: str, body: str) -> str:
     st = get_settings()
     msg = EmailMessage()
-    msg["From"] = f"Munshi <{st.gmail_address}>"
+    msg["From"] = f"Purser <{st.gmail_address}>"
     msg["To"] = to
     msg["Subject"] = " ".join(subject.split())[:200]  # header values may not contain newlines
-    msg["Message-ID"] = make_msgid(domain="munshi.demo")
-    msg.set_content(body + "\n\n— Sent by Munshi (hackathon demo, synthetic company data)")
+    msg["Message-ID"] = make_msgid(domain="purser.demo")
+    msg.set_content(body + "\n\n— Sent by Purser (hackathon demo, synthetic company data)")
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=20) as smtp:
         smtp.login(st.gmail_address, st.gmail_app_password)
         smtp.send_message(msg)

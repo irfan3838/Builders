@@ -5,11 +5,11 @@ from __future__ import annotations
 from agents import RunContextWrapper, function_tool
 
 from app import db
-from app.agent.context import MunshiContext, safe_tool
+from app.agent.context import PurserContext, safe_tool
 from app.services import charts
 from app.services.charts import ChartSpec, ChartSpecPatch, ViewSpec
 
-Ctx = RunContextWrapper[MunshiContext]
+Ctx = RunContextWrapper[PurserContext]
 
 
 def _card(snap, **extra) -> dict:
@@ -31,6 +31,12 @@ async def build_chart(ctx: Ctx, spec: ChartSpec) -> dict:
     'kaun paisa dena baaki hai / who owes us' -> measures=[receivables_outstanding], dimension=customer.
     'allocated vs spent by category' -> measures=[budget_allocated, budget_spent], dimension=category.
     'monthly bills' -> measures=[bill_amount], dimension=bill_month.
+    'spend by category as a treemap' -> measures=[bill_amount], dimension=category, chart=treemap.
+    'budget utilisation heatmap' -> measures=[budget_utilisation_pct], dimension=budget_month, series_by=category, chart=heatmap.
+    'budget kahan se kahan gaya / transfers' -> measures=[budget_moved], dimension=from_category, series_by=to_category, chart=sankey.
+    'daily claims calendar' -> measures=[claims_amount], dimension=day, chart=calendar_heatmap.
+    'bills this quarter vs last' -> measures=[bill_amount], date_from/date_to = this quarter, compare=prev_period.
+    'liabilities by counterparty / kaunse contract mein kitni liability' -> measures=[liability_count], dimension=counterparty.
     Speak only the returned totals, rows and insights; they are what the screen shows."""
     a = ctx.context.actor
     async with db.session_scope() as s:

@@ -1,4 +1,4 @@
-"""Ported from copilot services/fx_months.py (user's own code), workspace-scoped for Munshi.
+"""Ported from copilot services/fx_months.py (user's own code), workspace-scoped for Purser.
 
 A currency's conversion rate per month, set by hand (Clients -> FX rates).
 

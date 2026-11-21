@@ -1,4 +1,4 @@
-"""Scripted text conversation through the real MunshiAgent against the dev DB (reset to seed-v1).
+"""Scripted text conversation through the real PurserAgent against the dev DB (reset to seed-v1).
 
   uv run python -m scripts.text_harness --doc evals/dev/dev_hotel_receipt_synthetic.png "turn 1" "turn 2" ...
 Prints each reply, tools called, latency, and the Travel budget position after the run.
@@ -37,7 +37,7 @@ async def main(turns: list[str], doc: str | None, who: str) -> None:
         turns = [t.replace("{doc}", str(up.document_id)) for t in turns]
     for t in turns:
         r = await run_turn(actor, t)
-        print(f"\nUSER: {t}\nMUNSHI ({r.latency_ms} ms): {r.reply}\n  tools: {[x['tool'] + ':' + x['outcome'] for x in r.tools]}")
+        print(f"\nUSER: {t}\nPURSER ({r.latency_ms} ms): {r.reply}\n  tools: {[x['tool'] + ':' + x['outcome'] for x in r.tools]}")
     async with db.session_scope() as s:
         p = await budget.position(s, ids["workspace_id"], ids["travel_line_id"])
     print("\nTravel:", json.dumps({k: v // 100 for k, v in p.items()}))
