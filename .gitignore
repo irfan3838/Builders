@@ -61,3 +61,6 @@ out/
 coverage/
 *.log
 tmp/
+spikes/voice_spike/evidence/
+.uploads/
+.playwright-mcp/

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Munshi voice spike</title>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; max-width: 720px; margin: 2rem auto; }
+    #log p { margin: .25rem 0 } .you { color: #1f4e79 } .munshi { color: #6b2e00 }
+  </style>
+</head>
+<body>
+  <h1>Munshi voice spike</h1>
+  <p>Ask: “Travel budget mein kitna bacha hai?” (synthetic fixture)</p>
+  <button id="start">Start</button> <button id="stop" disabled>End</button>
+  <p id="status"></p>
+  <div id="log"></div>
+  <audio id="audio" autoplay></audio>
+<script type="module">
+const $ = (id) => document.getElementById(id);
+let pc, dc, mic, line = { you: null, munshi: null };
+function caption(who, text) {
+  if (!line[who]) { line[who] = document.createElement("p"); line[who].className = who; $("log").append(line[who]); }
+  line[who].textContent += text;
+  line[who === "you" ? "munshi" : "you"] = null;
+}
+$("start").onclick = async () => {
+  $("start").disabled = true; $("status").textContent = "Connecting…";
+  try {
+    pc = new RTCPeerConnection();
+    pc.ontrack = (e) => { $("audio").srcObject = new MediaStream([e.track]); };
+    mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mic.getAudioTracks().forEach((t) => pc.addTrack(t, mic));
+    dc = pc.createDataChannel("oai-events");
+    dc.onmessage = ({ data }) => {
+      const ev = JSON.parse(data);
+      if (ev.type === "session.started") { $("status").textContent = "Connected"; $("stop").disabled = false; }
+      else if (ev.type === "session.input_transcript.delta") caption("you", ev.delta);
+      else if (ev.type === "session.output_transcript.delta") caption("munshi", ev.delta);
+      else if (ev.type === "session.closed") { $("status").textContent = "Ended"; cleanup(); }
+      else if (ev.type === "error") $("status").textContent = "Error: " + JSON.stringify(ev.error);
+    };
+    await pc.setLocalDescription(await pc.createOffer());
+    await new Promise((res) => {
+      if (pc.iceGatheringState === "complete") return res();
+      pc.onicegatheringstatechange = () => pc.iceGatheringState === "complete" && res();
+      setTimeout(res, 5000);
+    });
+    const r = await fetch("/api/session", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sdp: pc.localDescription.sdp }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const result = await r.json();
+    await pc.setRemoteDescription({ type: "answer", sdp: result.transport.sdp });
+  } catch (e) { $("status").textContent = String(e); cleanup(); }
+};
+$("stop").onclick = () => { dc?.readyState === "open" && dc.send(JSON.stringify({ type: "session.close" })); setTimeout(cleanup, 8000); };
+function cleanup() { mic?.getTracks().forEach((t) => t.stop()); dc?.close(); pc?.close(); $("start").disabled = false; $("stop").disabled = true; }
+</script>
+</body>
+</html>
