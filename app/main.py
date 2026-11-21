@@ -347,6 +347,50 @@ async def person_card(user_id: int, actor: Actor = auth.ActorDep) -> dict:
             "tasks": [{"title": t.title, "owner": t.owner, "due": t.due_date.isoformat() if t.due_date else None, "status": t.status} for t in tasks]}
 
 
+# ---- revenue (customer invoices) read endpoints for the cards. Same read models as the agent tools.
+
+
+async def _revenue_read(actor: Actor, fn):
+    from app.services.records import today_ist
+    from app.services.revenue.core import Rev
+    from app.services.revenue_actions import require_view
+
+    require_view(actor)
+    rv = Rev.of(actor, today_ist(), channel="ui")
+    async with db.session_scope() as s:
+        return await s.run_sync(lambda ss: fn(ss, rv))
+
+
+@app.get("/api/revenue/overview")
+async def revenue_overview(fy: str | None = None, period: str | None = None, client_id: int | None = None,
+                           actor: Actor = auth.ActorDep) -> dict:
+    """KPIs + client x month grid for the revenue card."""
+    from app.services.records import today_ist
+    from app.services.revenue import reads
+    from app.services.revenue_actions import parse_fy
+
+    f = parse_fy(fy, today_ist())
+    p = None if period in (None, "", "fy") else period
+    return await _revenue_read(actor, lambda ss, rv: reads.overview(ss, rv, f, p, client_id))
+
+
+@app.get("/api/revenue/invoices/{ref}")
+async def revenue_invoice(ref: str, actor: Actor = auth.ActorDep) -> dict:
+    from app.services.revenue import invoices as inv
+
+    return await _revenue_read(actor, lambda ss, rv: inv.view(inv.by_ref(ss, rv, ref), rv.today))
+
+
+@app.get("/api/revenue/fx")
+async def revenue_fx(fy: str | None = None, currency: str | None = None, actor: Actor = auth.ActorDep) -> dict:
+    from app.services.records import today_ist
+    from app.services.revenue import reads
+    from app.services.revenue_actions import parse_fy
+
+    f = parse_fy(fy, today_ist())
+    return await _revenue_read(actor, lambda ss, rv: reads.fx_view(ss, rv, f, currency, history=True))
+
+
 @app.get("/api/receipts/{receipt_id}/deliveries")
 async def receipt_deliveries(receipt_id: int, actor: Actor = auth.ActorDep) -> dict:
     from app.models import Message, User

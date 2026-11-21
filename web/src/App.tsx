@@ -227,7 +227,7 @@ function Desk({ me }: { me: Me }) {
             </button>
           </div>
           <div className="panel-body">
-            {cards.map((c) => <CardView key={cardKey(c)} card={c} bump={bump} onChanged={() => setBump((b) => b + 1)} />)}
+            {cards.map((c) => <CardView key={cardKey(c)} card={c} bump={bump} onChanged={() => setBump((b) => b + 1)} onOpen={(n) => addCards([n])} />)}
           </div>
         </aside>
       )}

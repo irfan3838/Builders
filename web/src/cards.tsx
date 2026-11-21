@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, Card } from "./api";
 import { ChartCard, ViewCard } from "./ChartCard";
+import { FxRatesCard, InvoiceCard, RevenueCard } from "./RevenueCard";
 
 function useLoad<T>(path: string | null, bump = 0) {
   const [data, setData] = useState<T | null>(null);
@@ -317,7 +318,7 @@ function Deliveries({ receiptId, bump }: { receiptId: number; bump: number }) {
     {by("failed") ? ` · ${by("failed")} email failed` : ""}</p>;
 }
 
-export function CardView({ card, bump, onChanged }: { card: Card; bump: number; onChanged: () => void }) {
+export function CardView({ card, bump, onChanged, onOpen }: { card: Card; bump: number; onChanged: () => void; onOpen?: (c: Card) => void }) {
   switch (card.card) {
     case "proposal": return <ProposalCard id={card.proposal_id} bump={bump} onChanged={onChanged} />;
     case "receipt": return <ReceiptCard id={card.receipt_id} bump={bump} />;
@@ -333,6 +334,10 @@ export function CardView({ card, bump, onChanged }: { card: Card; bump: number; 
     case "person": return <PersonCard userId={card.user_id} bump={bump} />;
     case "chart": return <ChartCard id={card.snapshot_id} highlight={card.highlight} bump={bump} />;
     case "view": return <ViewCard title={card.title} items={card.items || []} bump={bump} />;
+    case "revenue": return <RevenueCard fy={card.fy} period={card.period} clientId={card.client_id} bump={bump}
+      onOpen={(ref) => onOpen?.({ card: "invoice", ref })} />;
+    case "invoice": return <InvoiceCard refId={card.ref} bump={bump} />;
+    case "fx_rates": return <FxRatesCard fy={card.fy} bump={bump} />;
     default: return null;
   }
 }
@@ -342,5 +347,7 @@ export function cardKey(c: Card): string {
   // A revised chart (same lineage) replaces the earlier version of itself.
   if (c.card === "chart") return "chart:" + (c.lineage ?? c.snapshot_id);
   if (c.card === "view") return "view:" + c.title;
+  if (c.card === "revenue") return "revenue";  // one revenue board; a new period/client replaces it
+  if (c.card === "fx_rates") return "fx_rates";
   return c.card + ":" + (c.proposal_id ?? c.receipt_id ?? c.document_id ?? c.line_id ?? c.user_id ?? c.scope ?? c.ref ?? JSON.stringify(c.items?.map((i: any) => i.ref) ?? ""));
 }

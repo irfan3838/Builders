@@ -9,7 +9,7 @@ from sqlalchemy import and_, or_, select
 
 from app import db
 from app.agent.context import MunshiContext, safe_tool
-from app.models import AuditEvent, Bill, BudgetLine, Claim, Invoice, Message, Party, Receipt, Settlement
+from app.models import AuditEvent, Bill, BudgetLine, Claim, Message, Party, Receipt, Settlement
 from app.money import format_inr
 from app.services import budget, records
 
@@ -100,10 +100,16 @@ async def _attention(s, a) -> list[dict]:
             kind = "bill_awaiting_approval" if b.state == "submitted" else "approved_bill_due"
             items.append({"kind": kind, "ref": b.ref, "who": p.name, "amount_paise": b.amount_paise,
                           "date": (b.due_date or b.business_date).isoformat(), "detail": f"due {b.due_date:%d %b}" if b.due_date else None})
-        for inv, p in (await s.execute(select(Invoice, Party).join(Party, Party.id == Invoice.customer_party_id).where(
-                Invoice.workspace_id == a.workspace_id, Invoice.due_date < today, Invoice.amount_paise > Invoice.paid_paise))).all():
-            items.append({"kind": "overdue_invoice", "ref": inv.number, "who": p.name, "amount_paise": inv.amount_paise - inv.paid_paise,
-                          "date": inv.due_date.isoformat(), "detail": f"{(today - inv.due_date).days} days overdue"})
+        # Revenue: the copilot suggestion rules (chase overdue, raise due, due soon, paid check-ins, reminders, plan FY).
+        from app.services.revenue import suggest as rev_suggest
+        from app.services.revenue.core import Rev
+
+        rv = Rev.of(a, today)
+        for sg in await s.run_sync(lambda ss: rev_suggest.build(ss, rv)):
+            if sg.kind in ("missing", "rate"):
+                continue  # lower-value nudges stay in get_revenue_suggestions
+            items.append({"kind": f"revenue_{sg.kind}", "ref": sg.ref or sg.id, "who": sg.title, "amount_paise": 0,
+                          "date": today.isoformat(), "detail": sg.detail})
         from app.services import budget_months as bm
         bell = await bm.alerts(s, a, today)
         for al in bell["alerts"]:

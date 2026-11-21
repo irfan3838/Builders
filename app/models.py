@@ -16,6 +16,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
     String,
     Text,
@@ -23,7 +24,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 
@@ -59,6 +60,12 @@ class Party(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(200))
     normalized_name: Mapped[str] = mapped_column(String(200), index=True)
     aliases: Mapped[list] = mapped_column(JSONB, default=list)
+    # Revenue client profile (kind=customer only): billing currency, lifecycle, soft delete.
+    currency: Mapped[str | None] = mapped_column(String(3))
+    state: Mapped[str] = mapped_column(String(10), default="active", server_default="active")  # active | paused | ended
+    state_on: Mapped[date | None] = mapped_column(Date)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
 
 
 class User(Base, TimestampMixin):
@@ -283,16 +290,155 @@ class CompanyPayment(Base, TimestampMixin):
 
 
 class Invoice(Base, TimestampMixin):
+    """A customer invoice (revenue). Ported from the copilot Revenue module.
+
+    Billing month (year, month) is what reporting uses. `amount_minor` is in `currency`; `fx_rate_micro` is
+    INR per unit x 10^6; `amount_paise` is the booked INR total, computed only by the revenue service.
+    `paid_paise` caches the sum of `payments` (kept in step by the service). Status: to_raise | sent |
+    part_paid | paid | written_off | merged. Kind: regular | balance | combined.
+    """
+
     __tablename__ = "invoices"
-    __table_args__ = (ws_fk("customer_party_id", "parties"),)
+    __table_args__ = (
+        ws_fk("customer_party_id", "parties"),
+        Index("uq_invoice_regular_month", "workspace_id", "customer_party_id", "year", "month", unique=True,
+              postgresql_where="kind = 'regular'"),
+    )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
-    number: Mapped[str] = mapped_column(String(40))
-    customer_party_id: Mapped[int] = mapped_column(BigInteger)
-    issue_date: Mapped[date] = mapped_column(Date)
-    due_date: Mapped[date] = mapped_column(Date)
+    ref: Mapped[str | None] = mapped_column(String(20), index=True)  # S{id}: what a user says
+    number: Mapped[str | None] = mapped_column(String(40))  # assigned on first send
+    customer_party_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    year: Mapped[int] = mapped_column(Integer)
+    month: Mapped[int] = mapped_column(Integer)
+    amount_minor: Mapped[int] = mapped_column(BigInteger)
+    currency: Mapped[str] = mapped_column(String(3), default="INR", server_default="INR")
+    fx_rate_micro: Mapped[int] = mapped_column(BigInteger, default=1_000_000, server_default="1000000")
+    fx_source: Mapped[str] = mapped_column(String(10), default="inr", server_default="inr")  # inr | manual | month | ecb
+    fx_date: Mapped[date | None] = mapped_column(Date)
+    issue_date: Mapped[date | None] = mapped_column(Date)  # the send day
+    due_date: Mapped[date | None] = mapped_column(Date)
+    amount_paise: Mapped[int] = mapped_column(BigInteger)  # booked INR total
+    paid_paise: Mapped[int] = mapped_column(BigInteger, default=0)  # cache: sum of payments
+    status: Mapped[str] = mapped_column(String(12), default="to_raise", server_default="to_raise")
+    checked_on: Mapped[date | None] = mapped_column(Date)
+    notes: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    period_from: Mapped[int | None] = mapped_column(Integer)  # yyyymm
+    period_months: Mapped[int | None] = mapped_column(Integer)
+    cycle_id: Mapped[int | None] = mapped_column(ForeignKey("client_cycles.id", ondelete="SET NULL"))
+    kind: Mapped[str] = mapped_column(String(10), default="regular", server_default="regular")
+    moved_paise: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    moved_to_id: Mapped[int | None] = mapped_column(ForeignKey("invoices.id", ondelete="SET NULL"))
+    raise_on: Mapped[date | None] = mapped_column(Date)
+    created_by: Mapped[int | None] = mapped_column(BigInteger)
+    updated_by: Mapped[int | None] = mapped_column(BigInteger)
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+
+    client: Mapped[Party] = relationship(Party, primaryjoin="Invoice.customer_party_id == Party.id",
+                                         foreign_keys="Invoice.customer_party_id")
+    cycle: Mapped[ClientCycle | None] = relationship("ClientCycle", foreign_keys="Invoice.cycle_id")
+    payments: Mapped[list[InvoicePayment]] = relationship(
+        "InvoicePayment", order_by="InvoicePayment.id", cascade="all, delete-orphan", passive_deletes=True)
+
+    # copilot names, so the ported service reads the same
+    @property
+    def total_paise(self) -> int:
+        return self.amount_paise
+
+    @total_paise.setter
+    def total_paise(self, v: int) -> None:
+        self.amount_paise = v
+
+    @property
+    def sent_on(self) -> date | None:
+        return self.issue_date
+
+    @sent_on.setter
+    def sent_on(self, v: date | None) -> None:
+        self.issue_date = v
+
+    @property
+    def due_on(self) -> date | None:
+        return self.due_date
+
+    @due_on.setter
+    def due_on(self, v: date | None) -> None:
+        self.due_date = v
+
+
+class InvoicePayment(Base, TimestampMixin):
+    """INR actually credited against a customer invoice (copilot `cli_receipt`)."""
+
+    __tablename__ = "invoice_payments"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id", ondelete="CASCADE"), index=True)
+    received_on: Mapped[date | None] = mapped_column(Date)
     amount_paise: Mapped[int] = mapped_column(BigInteger)
-    paid_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    created_by: Mapped[int | None] = mapped_column(BigInteger)
+    receipt_id: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class ClientCycle(Base, TimestampMixin):
+    """A client's billing cycle from a month on: monthly charge, every N months, advance/arrears, combined/monthly."""
+
+    __tablename__ = "client_cycles"
+    __table_args__ = (ws_fk("client_id", "parties"),)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    client_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    from_year: Mapped[int] = mapped_column(Integer)
+    from_month: Mapped[int] = mapped_column(Integer)
+    monthly_minor: Mapped[int] = mapped_column(BigInteger)
+    currency: Mapped[str] = mapped_column(String(3))
+    period_months: Mapped[int] = mapped_column(Integer, default=1)
+    timing: Mapped[str] = mapped_column(String(10), default="advance")  # advance | arrears
+    mode: Mapped[str] = mapped_column(String(10), default="combined")  # combined | monthly
+    created_by: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class FxQuote(Base):
+    """Cached ECB reference quotes (Frankfurter): INR per unit x 10^6, by publication date. Not business data."""
+
+    __tablename__ = "fx_quotes"
+    __table_args__ = (UniqueConstraint("currency", "rate_date"),)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    currency: Mapped[str] = mapped_column(String(3))
+    rate_date: Mapped[date] = mapped_column(Date)
+    rate_micro: Mapped[int] = mapped_column(BigInteger)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FxMonth(Base):
+    """A conversion rate set by hand for a currency and month; carries forward until the next one."""
+
+    __tablename__ = "fx_months"
+    __table_args__ = (UniqueConstraint("workspace_id", "currency", "year", "month"),)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    currency: Mapped[str] = mapped_column(String(3))
+    year: Mapped[int] = mapped_column(Integer)
+    month: Mapped[int] = mapped_column(Integer)
+    rate_micro: Mapped[int] = mapped_column(BigInteger)
+    set_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    set_by: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class Reminder(Base, TimestampMixin):
+    """A dated in-app reminder ('remind me Friday to chase Acme'), optionally about a client or invoice."""
+
+    __tablename__ = "reminders"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    client_id: Mapped[int | None] = mapped_column(BigInteger)
+    invoice_id: Mapped[int | None] = mapped_column(ForeignKey("invoices.id", ondelete="SET NULL"))
+    due_on: Mapped[date] = mapped_column(Date)
+    text: Mapped[str] = mapped_column(String(200))
+    created_by: Mapped[int | None] = mapped_column(BigInteger)
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    client: Mapped[Party | None] = relationship(Party, primaryjoin="Reminder.client_id == Party.id",
+                                                foreign_keys="Reminder.client_id")
 
 
 class Conversation(Base, TimestampMixin):

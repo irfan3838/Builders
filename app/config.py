@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     gmail_address: str = ""
     gmail_app_password: str = ""
     email_allowed_recipients: str = ""
+    # Revenue FX: "ecb" fetches Frankfurter (ECB reference rates); "fixture" uses fixed quotes (tests, offline demo).
+    fx_provider: str = "ecb"
 
     @field_validator("gmail_address", "gmail_app_password", "email_allowed_recipients", mode="before")
     @classmethod

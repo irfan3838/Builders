@@ -17,7 +17,7 @@ Deployment status: **LOCAL ONLY**. Nothing is provisioned on AWS.
 - A single `MunshiAgent` (`app/agent/munshi.py`, prompt in `app/agent/prompts/munshi.md`) with `RunContextWrapper[MunshiContext]`. Tools read the actor and workspace from that context, never from model arguments.
 - Conversation memory is a `SQLAlchemySession` keyed by conversation.
 - A vision `ExtractorAgent` (`app/agent/extractor.py`) produces structured output and has no tools. Arithmetic is checked in Python afterwards.
-- There are 44 tools:
+- There are 62 tools (44 below + 18 revenue tools, section 2.3c):
   - **Finance reads:** `get_budget_status`, `list_budget_categories`, `explain_budget_change`, `resolve_party`, `get_attention_items`, `get_record`, `get_audit_history`.
   - **Intake:** `inspect_document`, `correct_extracted_field`, `find_reservations`, `close_intake`, `show_source`.
   - **Finance proposals:** `propose_submit_claim`, `propose_submit_bill`, `propose_approval`, `propose_settlement`.
@@ -168,6 +168,23 @@ What is built:
 - [x] Sonnet gate `tests/test_budget_months.py` (32 tests, no bugs):
   - Final full-suite run: **353 passed, 0 failed, 0 xfailed**; `ruff check tests/` clean.
   - One existing test was updated for the seed change: `test_ledger_extra.py::test_double_settle_via_two_open_proposals_executes_once` now checks spent before + the bill amount, because of ₹9,400 of imported Jul–Sep actuals.
+
+### 2.3c Client revenue, ported from the user's copilot (BUILT, Sonnet gate running)
+Source: `~/Projects/copilot/clients/CLIENT_REVENUE.md`. Plan: `~/.claude/plans/i-have-a-detailed-agile-pebble-*.md`. Excel import/export is out of scope.
+
+What is built:
+- [x] **Migration `5f9c0723f1cc_revenue_core`** (Postgres only): `invoices` gains billing month, original currency + `amount_minor`, `fx_rate_micro`/source/date, status, kind, period, cycle, moved balance, `version`; `parties` gains client currency/state/archive/version; new `invoice_payments`, `client_cycles`, `fx_quotes`, `fx_months`, `reminders`. The 6 old invoices are backfilled. Up/down/up verified.
+- [x] **Services `app/services/revenue/`**: sync SQLAlchemy run through `AsyncSession.run_sync`, so the copilot code ports with its logic intact. `money.py`/`fiscal.py` copied unchanged. A `before_flush` listener bumps invoice/client versions on any change.
+- [x] **13 actions** (`app/services/revenue_actions.py`): add invoices, send/unsend, payment (single or allocated), edit/rate/delete, refresh rate, move balance, client change, billing cycle, plan FY, month FX rate, end project. `plan()` is a real trial run in a SAVEPOINT, rolled back; touched rows become `affected` (stale on change).
+- [x] **Grounding**: an amount or rate must appear in the user's recent server-observed turns (digits, 1.5L/30k, and English/Hindi/Hinglish number words).
+- [x] **ECB**: async Frankfurter refresh (6 s timeout) before the sync run, cached in `fx_quotes`; stale fallback; `FX_PROVIDER=fixture` for tests/offline.
+- [x] **18 agent tools** (62 total) + "Revenue" prompt section; `get_attention_items` now carries revenue chases, raises, check-ins and reminders.
+- [x] **Charts**: receivables use the revenue figures (billed less moved, outstanding = sent/part paid only); new measures `to_raise_amount`, `overdue_amount`, `fx_gain`; dims `billing_month`, `currency`, `client_state`.
+- [x] **UI**: Revenue card (4 KPIs + client×month grid, word+colour status, opens on the current month), Invoice card (cell click opens it), Conversion-rates card. Endpoints `/api/revenue/overview|invoices/{ref}|fx`. Checked in the browser.
+- [x] **Seed**: Northwind Labs (synthetic, USD monthly, hand-set Sep/Oct rates), Kaveri Foods (synthetic, INR quarterly advance), Orbit Design Studio (synthetic, paused), a reminder due today. Old 6 invoices unchanged (still ₹5,42,700 outstanding among them; the whole book is now ₹6,48,550 outstanding / ₹3,40,550 overdue at seed).
+- [x] **Real agent (text harness, Hinglish)**: overview → send Northwind Nov → ₹50,000 part payment → (refuses to move the balance before the payment is confirmed) → balance to December → "November ka dollar rate 84.20" reprices 5 invoices → pending items → Friday reminder.
+- [ ] Sonnet gate `tests/test_revenue_core.py` (agent `sonnet-tester-revenue-core`), then a second fresh gate for FX / cycles / balance / project end.
+- Known: reply latency 7–16 s per turn (see 2.2).
 
 ### 2.4 Roles and failure paths (PLAN_v4 H13–15)
 - [ ] Confirm the gates already covered by the existing tests:

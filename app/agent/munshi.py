@@ -8,12 +8,12 @@ from agents import Agent, ModelSettings, RunContextWrapper
 from openai.types.shared import Reasoning
 
 from app.agent.context import MunshiContext
-from app.agent.tools import budget_months, charts, finance, intake, people, proposals
+from app.agent.tools import budget_months, charts, finance, intake, people, proposals, revenue
 from app.config import get_settings
 from app.services.records import today_ist
 
 PROMPT = (Path(__file__).parent / "prompts" / "munshi.md").read_text()
-ALL_TOOLS = [*finance.TOOLS, *budget_months.TOOLS, *charts.TOOLS, *intake.TOOLS, *proposals.TOOLS, *people.TOOLS]
+ALL_TOOLS = [*finance.TOOLS, *budget_months.TOOLS, *charts.TOOLS, *intake.TOOLS, *proposals.TOOLS, *people.TOOLS, *revenue.TOOLS]
 
 
 def _instructions(ctx: RunContextWrapper[MunshiContext], agent: Agent) -> str:

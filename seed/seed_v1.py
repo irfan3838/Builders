@@ -11,7 +11,7 @@ import os
 from datetime import date
 
 from argon2 import PasswordHasher
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import db
@@ -22,6 +22,7 @@ from app.models import (
     Claim,
     CompanyPayment,
     Invoice,
+    InvoicePayment,
     Party,
     Reservation,
     Settlement,
@@ -172,8 +173,17 @@ async def seed(s: AsyncSession, *, workspace_name: str = "Munshi Demo Traders Pv
         ("lotus", "INV-2026-104", date(2026, 10, 3), date(2026, 11, 12), 47_200, 20_000),
     ]
     for key, num, issued, due, amt, paid in inv:
-        s.add(Invoice(workspace_id=W, number=num, customer_party_id=customers[key].id, issue_date=issued, due_date=due,
-                      amount_paise=amt * L, paid_paise=paid * L))
+        customers[key].currency = "INR"
+        row = Invoice(workspace_id=W, number=num, customer_party_id=customers[key].id, issue_date=issued, due_date=due,
+                      year=issued.year, month=issued.month, amount_minor=amt * L, currency="INR", fx_rate_micro=1_000_000,
+                      fx_source="inr", amount_paise=amt * L, paid_paise=paid * L,
+                      status="part_paid" if paid else "sent", kind="regular", moved_paise=0)
+        if paid:
+            row.payments.append(InvoicePayment(workspace_id=W, received_on=date(2026, 10, 28), amount_paise=paid * L))
+        s.add(row)
+    await s.flush()
+    for row in (await s.execute(select(Invoice).where(Invoice.workspace_id == W))).scalars():
+        row.ref = f"S{row.id}"
     await s.flush()
 
     # ---- people ops (synthetic)
@@ -219,8 +229,63 @@ async def seed(s: AsyncSession, *, workspace_name: str = "Munshi Demo Traders Pv
         _m, nxt, rows = await bm.plan_close(s, admin, date(2026, 11, 21), m.isoformat()[:7], variances={}, carry_over=[])
         await bm.apply_close(s, admin, m, nxt, rows, None, source="imported_snapshot")
     await s.flush()
-    return {"workspace_id": W, "neha_id": neha.id, "neha_leave_ref": lr.ref, "priya_id": priya.id, "arjun_id": arjun.id, "travel_line_id": lines["Travel"].id,
+    rev = await _seed_revenue(s, admin, customers)
+    return {**rev, "workspace_id": W, "neha_id": neha.id, "neha_leave_ref": lr.ref, "priya_id": priya.id, "arjun_id": arjun.id, "travel_line_id": lines["Travel"].id,
             "reservation_id": rs.id, "arjun_party_id": arjun_p.id, "priya_party_id": priya_p.id, "neha_claim_ref": c.ref}
+
+
+async def _seed_revenue(s: AsyncSession, admin, customers: dict) -> dict:
+    """Revenue demo rows (ALL SYNTHETIC), written through the revenue services so every figure is computed the
+    same way as at run time. Business date 21 Nov 2026.
+
+    - Northwind Labs (synthetic): USD retainer $1,500/month from Sep 2026, month rates set by hand for Sep (83.40) and
+      Oct (83.90). Oct's rate carries forward, so Nov-Mar (still to raise) are priced at 83.90 until a new rate is set.
+      Sep paid (a small short credit shows as FX loss); Oct sent and part paid.
+    - Kaveri Foods (synthetic): INR quarterly retainer, Rs 25,000/month billed in advance; Oct-Dec paid.
+    - Orbit Design Studio (synthetic): paused client with a sent August invoice.
+    - A reminder due today about the Lotus Hospitality balance.
+    """
+    from app.models import FxQuote
+    from app.services.revenue import clients as cl
+    from app.services.revenue import cycles, fx_months, reminders
+    from app.services.revenue import invoices as rinv
+    from app.services.revenue.core import Rev
+
+    today = date(2026, 11, 21)
+    # one cached ECB reference quote, labelled synthetic: the offline demo prices from it; a live fetch replaces it.
+    s.add(FxQuote(currency="USD", rate_date=date(2026, 11, 20), rate_micro=84_100_000))
+    await s.flush()
+
+    def go(ss) -> dict:
+        rv = Rev(admin.workspace_id, admin.user_id, today, channel="seed")
+        nw = cl.create_client(ss, rv, name="Northwind Labs (synthetic)", currency="USD")
+        fx_months.apply(ss, rv, "USD", [(2026, 9)], 83_400_000, [])
+        fx_months.apply(ss, rv, "USD", [(2026, 10)], 83_900_000, [])
+        cycles.apply(ss, rv, nw, cycles.CycleIn(2026, 9, 150_000, "USD", 1, "advance", "monthly"))
+        rows = {(i.year, i.month): i for i in rinv.list_invoices(ss, rv, client_id=nw.id)}
+        sep, octo = rows[(2026, 9)], rows[(2026, 10)]
+        rinv.set_status(ss, rv, sep, "sent", on=date(2026, 9, 2))
+        rinv.record_payment(ss, rv, sep, amount_paise=124_95_000, received_on=date(2026, 9, 25), settled=True)
+        rinv.set_status(ss, rv, octo, "sent", on=date(2026, 10, 3))
+        rinv.record_payment(ss, rv, octo, amount_paise=60_000_00, received_on=date(2026, 11, 4), settled=False)
+
+        kv = cl.create_client(ss, rv, name="Kaveri Foods (synthetic)", currency="INR")
+        cycles.apply(ss, rv, kv, cycles.CycleIn(2026, 10, 25_000_00, "INR", 3, "advance", "combined"))
+        q = {(i.year, i.month): i for i in rinv.list_invoices(ss, rv, client_id=kv.id)}[(2026, 10)]
+        rinv.set_status(ss, rv, q, "sent", on=date(2026, 10, 1))
+        rinv.record_payment(ss, rv, q, amount_paise=None, received_on=date(2026, 10, 15), settled=True)
+
+        ob = cl.create_client(ss, rv, name="Orbit Design Studio (synthetic)", currency="INR")
+        [aug] = rinv.create_invoices(ss, rv, client=ob, months=[(2026, 8)], amount_minor=40_000_00, currency="INR",
+                                     priced=rinv.price(ss, rv, "INR"))
+        rinv.set_status(ss, rv, aug, "sent", on=date(2026, 8, 5))
+        cl.set_client_state(ss, rv, ob, "paused", on=date(2026, 10, 1))
+
+        lotus = customers["lotus"]
+        reminders.add(ss, rv, due_on=today, text="Call Lotus Hospitality about the Rs 27,200 balance", client_id=lotus.id)
+        return {"northwind_client_id": nw.id, "northwind_nov_ref": rows[(2026, 11)].ref, "northwind_oct_ref": octo.ref}
+
+    return await s.run_sync(go)
 
 
 async def reset_and_seed(url: str | None = None) -> dict:

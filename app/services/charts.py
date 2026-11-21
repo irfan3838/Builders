@@ -40,6 +40,9 @@ class MeasureName(StrEnum):
     invoiced_amount = "invoiced_amount"
     received_amount = "received_amount"
     invoice_count = "invoice_count"
+    to_raise_amount = "to_raise_amount"
+    overdue_amount = "overdue_amount"
+    fx_gain = "fx_gain"
     payables_outstanding = "payables_outstanding"
     bill_amount = "bill_amount"
     bill_count = "bill_count"
@@ -68,6 +71,9 @@ class DimensionName(StrEnum):
     bill_month = "bill_month"
     claim_month = "claim_month"
     budget_month = "budget_month"
+    billing_month = "billing_month"
+    currency = "currency"
+    client_state = "client_state"
 
 
 class ChartType(StrEnum):
@@ -166,10 +172,13 @@ class Dim:
 
 
 MEASURES: dict[str, Measure] = {
-    "receivables_outstanding": Measure("Outstanding", "paise", "receivables", "Customer invoice balance still unpaid (amount − received)"),
-    "invoiced_amount": Measure("Invoiced", "paise", "receivables", "Total invoiced to customers"),
-    "received_amount": Measure("Received", "paise", "receivables", "Customer payments received against invoices"),
+    "receivables_outstanding": Measure("Outstanding", "paise", "receivables", "Sent / part-paid customer invoices not yet paid (total − received − moved on)"),
+    "invoiced_amount": Measure("Projected", "paise", "receivables", "Billed to customers (projection): total less balances moved on; merged rows 0; written off = what came in"),
+    "received_amount": Measure("Received", "paise", "receivables", "INR credited against customer invoices (counted in the invoice's billing month)"),
     "invoice_count": Measure("Invoices", "count", "receivables", "Number of customer invoices"),
+    "to_raise_amount": Measure("To raise", "paise", "receivables", "Planned customer invoices not raised (sent) yet"),
+    "overdue_amount": Measure("Overdue", "paise", "receivables", "Outstanding past its due date"),
+    "fx_gain": Measure("FX gain/loss", "paise", "receivables", "On paid invoices: received + moved − booked INR total (negative = loss / short pay)"),
     "payables_outstanding": Measure("Unpaid", "paise", "payables", "Vendor bills not yet settled (awaiting approval or approved)"),
     "bill_amount": Measure("Billed", "paise", "payables", "Vendor bill amounts (rejected bills excluded)"),
     "bill_count": Measure("Bills", "count", "payables", "Number of vendor bills (rejected excluded)"),
@@ -198,6 +207,9 @@ DIMS: dict[str, Dim] = {
     "bill_month": Dim("Bill month", "time", "Month of the bill date"),
     "claim_month": Dim("Claim month", "time", "Month of the expense"),
     "budget_month": Dim("Budget month", "time", "Budget month (April-March financial year)"),
+    "billing_month": Dim("Billing month", "time", "Month a customer invoice bills for (what revenue reports by)"),
+    "currency": Dim("Currency", "category", "Invoice currency (INR, USD, ...)"),
+    "client_state": Dim("Client state", "category", "Customer active / paused / project over"),
 }
 
 
@@ -242,26 +254,39 @@ def _month(col: ColumnElement) -> ColumnElement:
 
 
 def _receivables(a: Actor, today: date) -> Compiled:
+    """Customer invoices with the revenue module's figures (ported from copilot): projection, received, outstanding
+    (sent / part paid only), overdue, to raise, FX gain. Reported by billing month."""
     cust = aliased(Party)
-    out = Invoice.amount_paise - Invoice.paid_paise
+    st = Invoice.status
+    left = func.greatest(Invoice.amount_paise - Invoice.paid_paise - Invoice.moved_paise, 0)
+    out = case((st.in_(("sent", "part_paid")), left), else_=0)
     is_open = out > 0
+    overdue = and_(Invoice.due_date < today, is_open)
+    billed = case((st == "merged", 0), (st == "written_off", Invoice.paid_paise), else_=Invoice.amount_paise - Invoice.moved_paise)
+    bill_date = func.make_date(Invoice.year, Invoice.month, 1)
+    number = func.coalesce(Invoice.number, Invoice.ref)
     return Compiled(
         frm=Invoice.__table__.join(cust, cust.id == Invoice.customer_party_id),
-        where=[Invoice.workspace_id == a.workspace_id, cust.workspace_id == a.workspace_id],
+        where=[Invoice.workspace_id == a.workspace_id, cust.workspace_id == a.workspace_id, cust.archived_at.is_(None)],
         dims={
-            "customer": cust.name, "invoice": Invoice.number,
-            "status": case((~is_open, "paid"), (Invoice.due_date < today, "overdue"), else_="not yet due"),
-            "ageing_bucket": _ageing(Invoice.due_date, is_open, today),
-            "issue_month": _month(Invoice.issue_date), "due_month": _month(Invoice.due_date),
+            "customer": cust.name, "invoice": number,
+            "status": case((st == "to_raise", "to raise"), (st.in_(("written_off", "merged")), "closed"), (st == "paid", "paid"),
+                           (~is_open, "paid"), (Invoice.due_date < today, "overdue"), else_="not yet due"),
+            "ageing_bucket": case((st == "to_raise", "not yet due"), else_=_ageing(Invoice.due_date, is_open, today)),
+            "issue_month": _month(func.coalesce(Invoice.issue_date, bill_date)), "due_month": _month(Invoice.due_date),
+            "billing_month": _month(bill_date), "currency": Invoice.currency, "client_state": cust.state,
         },
         measures={
-            "receivables_outstanding": func.sum(out), "invoiced_amount": func.sum(Invoice.amount_paise),
+            "receivables_outstanding": func.sum(out), "invoiced_amount": func.sum(billed),
             "received_amount": func.sum(Invoice.paid_paise), "invoice_count": func.count(Invoice.id),
+            "to_raise_amount": func.sum(case((st == "to_raise", Invoice.amount_paise), else_=0)),
+            "overdue_amount": func.sum(case((overdue, out), else_=0)),
+            "fx_gain": func.sum(case((st == "paid", Invoice.paid_paise + Invoice.moved_paise - Invoice.amount_paise), else_=0)),
         },
-        ref=Invoice.number,
-        open_where=is_open, open_measures=frozenset({"receivables_outstanding"}),
-        overdue=and_(Invoice.due_date < today, is_open),
-        date_col=Invoice.issue_date,
+        ref=number,
+        open_where=is_open, open_measures=frozenset({"receivables_outstanding", "overdue_amount"}),
+        overdue=overdue,
+        date_col=bill_date,
     )
 
 
@@ -385,7 +410,7 @@ def chart_problem(spec: ChartSpec) -> str | None:
     d = DIMS[spec.dimension.value] if spec.dimension else None
     multi = len(spec.measures) > 1 or spec.series_by is not None
     if ct in (ChartType.line, ChartType.area) and (d is None or d.kind != "time"):
-        return f"A {ct.value} chart needs a month dimension (issue_month, due_month, bill_month, claim_month or budget_month)."
+        return f"A {ct.value} chart needs a month dimension (billing_month, issue_month, due_month, bill_month, claim_month or budget_month)."
     if ct == ChartType.kpi and d is not None:
         return "A kpi shows a single number; remove the dimension or pick another chart type."
     if ct == ChartType.donut and (d is None or d.kind == "time" or multi):

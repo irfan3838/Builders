@@ -665,3 +665,8 @@ ACTIONS: dict[str, Action] = {a.kind: a for a in (SubmitClaim(), SubmitBill(), A
 from app.services.budget_actions import ALL as _BUDGET_ACTIONS  # noqa: E402
 
 ACTIONS.update({a.kind: a for a in _BUDGET_ACTIONS})
+
+# Revenue (customer invoices, ported from the copilot Revenue module): same propose -> confirm -> receipt path.
+from app.services.revenue_actions import REVENUE_ACTIONS as _REVENUE_ACTIONS  # noqa: E402
+
+ACTIONS.update({a.kind: a for a in _REVENUE_ACTIONS})
