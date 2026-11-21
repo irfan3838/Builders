@@ -2,25 +2,32 @@
 // labels, title and chart type; this file only maps a snapshot onto an ECharts option (snapshotToOption).
 import { useEffect, useRef, useState } from "react";
 import * as echarts from "echarts/core";
-import { BarChart, LineChart, PieChart } from "echarts/charts";
-import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
+import { BarChart, HeatmapChart, LineChart, PieChart, SankeyChart, TreemapChart } from "echarts/charts";
+import { CalendarComponent, GridComponent, LegendComponent, TooltipComponent, VisualMapComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import type { EChartsCoreOption } from "echarts/core";
 import { api } from "./api";
 
-echarts.use([BarChart, LineChart, PieChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
+echarts.use([BarChart, LineChart, PieChart, HeatmapChart, SankeyChart, TreemapChart, CalendarComponent, GridComponent, LegendComponent,
+  TooltipComponent, VisualMapComponent, CanvasRenderer]);
 
 // Equal greens. Single series = brand green. Multi-series slots validated for lightness band, CVD and
 // normal-vision separation (dataviz validate_palette.js); "Other" is neutral gray. Table view is always one click away.
-const SERIES = ["#00b140", "#1d6b57", "#7fa800"];
-const OTHER = "#9aa0a6";
-const INK = "#212121", MUTED = "#5f6368", LINE = "#e8e8e8", DEEP = "#0f362d", SURFACE = "#ffffff";
+const SERIES = ["#8cf0bf", "#e7c77f", "#8aa892"];
+const OTHER = "#6f8579";
+const INK = "#f1ebdd", MUTED = "#9fb2a7", LINE = "rgba(178,206,188,.18)", DEEP = "#8cf0bf", SURFACE = "#0f241b";
+// Categorical slices (donut, pie, treemap, sankey nodes) and a sequential ramp (heatmaps): light mint -> deep green,
+// monotonic in lightness so intensity reads without hue.
+const CATS = ["#8cf0bf", "#e7c77f", "#8aa892", "#5fd9a0", "#e8a6b8", "#6fb894"];
+const RAMP = ["#12281f", "#1f4a3a", "#2f6e55", "#4fa47e", "#7fd6a8", "#c7f8de"];
 
 type Row = { key: string; label: string; series: string | null; values: Record<string, number>; refs: string[] };
 type Meta = {
   title: string; chart: string; measures: { name: string; label: string; unit: string }[];
   dimension: { name: string; label: string; kind: string } | null; series_by: { name: string; label: string } | null;
   filters_applied: string[]; as_of: string; scope: string; record_label: string; source_label: string; lineage?: string;
+  compare?: { mode: string; current: string; previous: string; change_pct: number | null } | null;
+  changes?: { label: string; change_pct: number | null }[] | null;
 };
 export type Snapshot = { id: string; rows: Row[]; meta: Meta; totals: Record<string, { value: number; display: string }> };
 
@@ -34,8 +41,9 @@ function compactInr(paise: number): string {
   if (a >= 1e3) return `₹${t(r / 1e3)}K`;
   return `₹${t(r)}`;
 }
-const fmtFull = (v: number, unit: string) => (unit === "paise" ? fullInr(v) : v.toLocaleString("en-IN"));
-const fmtAxis = (v: number, unit: string) => (unit === "paise" ? compactInr(v) : v.toLocaleString("en-IN"));
+const pct = (bp: number) => `${(bp / 100).toFixed(1)}%`;
+const fmtFull = (v: number, unit: string) => (unit === "paise" ? fullInr(v) : unit === "pct" ? pct(v) : v.toLocaleString("en-IN"));
+const fmtAxis = (v: number, unit: string) => (unit === "paise" ? compactInr(v) : unit === "pct" ? `${Math.round(v / 100)}%` : v.toLocaleString("en-IN"));
 
 /** Pivot snapshot rows into categories × series. Series = series_by values, else one per measure. */
 function pivot(s: Snapshot) {
@@ -59,23 +67,92 @@ export function snapshotToOption(s: Snapshot, highlight?: string | null): EChart
   const color = (i: number, name: string) => (name === "Other" ? OTHER : multi ? SERIES[i % SERIES.length] : SERIES[0]);
   const axisText = { color: MUTED, fontFamily: "DM Sans, sans-serif", fontSize: 12 };
   const tooltip = {
-    trigger: s.meta.chart === "donut" ? "item" : "axis", confine: true,
+    trigger: ["donut", "pie"].includes(s.meta.chart) ? "item" : "axis", confine: true,
     axisPointer: { type: s.meta.chart === "line" || s.meta.chart === "area" ? "line" : "shadow", lineStyle: { color: LINE } },
-    borderColor: LINE, textStyle: { color: INK, fontFamily: "DM Sans, sans-serif" },
+    backgroundColor: "rgba(15,36,27,.96)", borderColor: LINE, textStyle: { color: INK, fontFamily: "DM Sans, sans-serif" },
     valueFormatter: (v: number) => fmtFull(v, unit),
   };
   const legend = multi ? { top: 0, left: 0, icon: "roundRect", itemWidth: 10, itemHeight: 10, textStyle: { color: INK } } : undefined;
 
-  if (s.meta.chart === "donut") {
+  const chart = s.meta.chart;
+  const itemTip = { ...tooltip, trigger: "item", axisPointer: undefined };
+  const m0 = s.meta.measures[0].name;
+
+  if (chart === "treemap") {
+    const nested = !!s.meta.series_by;
+    const data = nested
+      ? cats.map((c, i) => ({ name: c, itemStyle: { color: c === "Other" ? OTHER : CATS[i % CATS.length] },
+          children: s.rows.filter((r) => r.label === c && r.values[m0] > 0).map((r) => ({ name: r.series ?? c, value: r.values[m0] })) }))
+      : cats.map((c, i) => ({ name: c, value: series[0].data[i], itemStyle: { color: c === "Other" ? OTHER : CATS[i % CATS.length] } }))
+          .filter((d) => d.value > 0);
+    return {
+      tooltip: { ...itemTip, formatter: (p: any) => `${(p.treePathInfo || []).slice(1).map((x: any) => x.name).join(" › ") || p.name}<br/><b>${fmtFull(p.value, unit)}</b>` },
+      series: [{ type: "treemap", data, roam: false, nodeClick: false, breadcrumb: { show: false }, width: "100%", height: "100%", top: 0, left: 0,
+        label: { show: true, color: SURFACE, fontFamily: "DM Sans, sans-serif", formatter: (p: any) => `${p.name}\n${fmtAxis(p.value, unit)}` },
+        upperLabel: nested ? { show: true, height: 22, color: SURFACE } : undefined,
+        itemStyle: { borderColor: SURFACE, borderWidth: 2, gapWidth: 2 },
+        levels: nested ? [{ itemStyle: { borderWidth: 0, gapWidth: 3 } }, { colorSaturation: [0.35, 0.6], itemStyle: { gapWidth: 1, borderColorSaturation: 0.7 } }] : undefined }],
+    };
+  }
+
+  if (chart === "heatmap") {
+    const rowsY: string[] = [];
+    for (const r of s.rows) if (r.series && !rowsY.includes(r.series)) rowsY.push(r.series);
+    const vals = s.rows.map((r) => r.values[m0]);
+    return {
+      tooltip: { ...itemTip, formatter: (p: any) => `${rowsY[p.value[1]]} · ${cats[p.value[0]]}<br/><b>${fmtFull(p.value[2], unit)}</b>` },
+      grid: { left: 8, right: 8, top: 8, bottom: 44, containLabel: true },
+      xAxis: { type: "category", data: cats, splitArea: { show: true }, axisLabel: { ...axisText, interval: 0, hideOverlap: true }, axisTick: { show: false } },
+      yAxis: { type: "category", data: rowsY, splitArea: { show: true }, axisLabel: { ...axisText, width: 120, overflow: "truncate" }, axisTick: { show: false } },
+      visualMap: { min: Math.min(0, ...vals), max: Math.max(1, ...vals), calculable: false, orient: "horizontal", left: "center", bottom: 0,
+        itemHeight: 120, inRange: { color: RAMP }, textStyle: { color: MUTED }, formatter: (v: number) => fmtAxis(v, unit) },
+      series: [{ type: "heatmap", data: s.rows.map((r) => [cats.indexOf(r.label), rowsY.indexOf(r.series ?? ""), r.values[m0]]),
+        label: { show: cats.length * rowsY.length <= 48, color: INK, fontSize: 11, formatter: (p: any) => fmtAxis(p.value[2], unit) },
+        itemStyle: { borderColor: SURFACE, borderWidth: 2, borderRadius: 3 } }],
+    };
+  }
+
+  if (chart === "calendar_heatmap") {
+    const days = s.rows.filter((r) => r.key && r.key !== "Other").map((r) => [r.key, r.values[m0]] as [string, number]);
+    const keys = days.map((d) => d[0]).sort();
+    const vals = days.map((d) => d[1]);
+    return {
+      tooltip: { ...itemTip, formatter: (p: any) => `${p.value[0]}<br/><b>${fmtFull(p.value[1], unit)}</b>` },
+      visualMap: { min: 0, max: Math.max(1, ...vals), orient: "horizontal", left: "center", bottom: 0, itemHeight: 120,
+        inRange: { color: RAMP }, textStyle: { color: MUTED }, formatter: (v: number) => fmtAxis(v, unit) },
+      calendar: { range: keys.length ? [keys[0], keys[keys.length - 1]] : undefined, top: 24, left: 36, right: 12, cellSize: ["auto", 16],
+        itemStyle: { borderColor: SURFACE, borderWidth: 2, color: "#12281f" }, splitLine: { show: false },
+        dayLabel: { color: MUTED, firstDay: 1, nameMap: "en" }, monthLabel: { color: MUTED }, yearLabel: { show: false } },
+      series: [{ type: "heatmap", coordinateSystem: "calendar", data: days }],
+    };
+  }
+
+  if (chart === "sankey") {
+    const sources = new Set(s.rows.map((r) => r.label));
+    const target = (n: string) => (sources.has(n) ? n + "\u200b" : n);  // a node can be both: keep the flow acyclic
+    const links = s.rows.filter((r) => r.series && r.values[m0] > 0).map((r) => ({ source: r.label, target: target(r.series!), value: r.values[m0] }));
+    const names = Array.from(new Set(links.flatMap((l) => [l.source, l.target])));
+    return {
+      tooltip: { ...itemTip, formatter: (p: any) => p.dataType === "edge"
+        ? `${p.data.source} → ${String(p.data.target).replace("\u200b", "")}<br/><b>${fmtFull(p.data.value, unit)}</b>`
+        : `${String(p.name).replace("\u200b", "")}<br/><b>${fmtFull(p.value, unit)}</b>` },
+      series: [{ type: "sankey", left: 8, right: 96, top: 8, bottom: 8, nodeGap: 10, nodeWidth: 12, draggable: false,
+        data: names.map((n, i) => ({ name: n, itemStyle: { color: CATS[i % CATS.length] } })), links,
+        lineStyle: { color: "gradient", opacity: 0.35, curveness: 0.5 }, emphasis: { focus: "adjacency" },
+        label: { color: INK, fontFamily: "DM Sans, sans-serif", formatter: (p: any) => String(p.name).replace("\u200b", "") } }],
+    };
+  }
+
+  if (chart === "donut" || chart === "pie") {
     const sr = series[0];
     return {
       tooltip, legend: { bottom: 0, icon: "roundRect", itemWidth: 10, itemHeight: 10, textStyle: { color: INK } },
       series: [{
-        type: "pie", radius: ["52%", "78%"], center: ["50%", "45%"], padAngle: 1,
+        type: "pie", radius: chart === "pie" ? [0, "75%"] : ["52%", "78%"], center: ["50%", "45%"], padAngle: chart === "pie" ? 0 : 1,
         itemStyle: { borderColor: SURFACE, borderWidth: 2, borderRadius: 4 },
         label: { show: true, color: INK, formatter: (p: any) => `${p.name}\n${fmtAxis(p.value, unit)}` },
         data: cats.map((c, i) => ({ name: c, value: sr.data[i],
-          itemStyle: { color: c === "Other" ? OTHER : ["#00b140", "#1d6b57", "#7fa800", "#5f8f7f", "#b7d98a", "#0f362d"][i % 6],
+          itemStyle: { color: c === "Other" ? OTHER : CATS[i % CATS.length],
                        opacity: highlight && c !== highlight ? 0.35 : 1 } })),
       }],
     };
@@ -138,7 +215,10 @@ function Plot({ snap, highlight }: { snap: Snapshot; highlight?: string | null }
     return () => { ro.disconnect(); chart.dispose(); };
   }, [snap, highlight]);
   const n = new Set(snap.rows.map((r) => r.label)).size;
-  const h = snap.meta.chart === "horizontal_bar" ? Math.max(180, n * 34 + 40) : snap.meta.chart === "donut" ? 280 : 240;
+  const ys = new Set(snap.rows.map((r) => r.series)).size;
+  const c = snap.meta.chart;
+  const h = c === "horizontal_bar" ? Math.max(180, n * 34 + 40) : c === "heatmap" ? Math.max(200, ys * 30 + 90)
+    : c === "calendar_heatmap" ? 210 : c === "sankey" ? Math.max(260, n * 34) : c === "treemap" ? 300 : ["donut", "pie"].includes(c) ? 280 : 240;
   return <div ref={el} className="plot" style={{ height: h }} role="img" aria-label={`${snap.meta.title}. Use the table view for exact values.`} />;
 }
 
@@ -149,25 +229,29 @@ function DataTable({ snap, highlight }: { snap: Snapshot; highlight?: string | n
       <table className="data">
         <thead><tr>
           <th>{snap.meta.dimension?.label ?? ""}</th>{snap.meta.series_by && <th>{snap.meta.series_by.label}</th>}
-          {ms.map((m) => <th key={m.name} className="amount">{m.label}</th>)}<th>Source {snap.meta.record_label}</th>
+          {ms.map((m) => <th key={m.name} className="amount">{m.label}</th>)}{snap.meta.changes && <th className="amount">vs previous month</th>}
+          <th>Source {snap.meta.record_label}</th>
         </tr></thead>
         <tbody>
           {snap.rows.map((r, i) => (
             <tr key={i} className={highlight === r.label ? "hl" : ""}>
               <td>{r.label}</td>{snap.meta.series_by && <td>{r.series}</td>}
               {ms.map((m) => <td key={m.name} className="amount num">{fmtFull(r.values[m.name], m.unit)}</td>)}
+              {snap.meta.changes && <td className="amount num">{fmtChange(snap.meta.changes[i]?.change_pct)}</td>}
               <td className="ref">{r.refs.join(", ") || "—"}</td>
             </tr>
           ))}
         </tbody>
         <tfoot><tr>
           <td>Total</td>{snap.meta.series_by && <td />}
-          {ms.map((m) => <td key={m.name} className="amount num">{snap.totals[m.name]?.display}</td>)}<td />
+          {ms.map((m) => <td key={m.name} className="amount num">{snap.totals[m.name]?.display}</td>)}{snap.meta.changes && <td />}<td />
         </tr></tfoot>
       </table>
     </div>
   );
 }
+
+const fmtChange = (p?: number | null) => (p === null || p === undefined ? "—" : `${p > 0 ? "+" : ""}${p.toFixed(1)}%`);
 
 function Kpi({ snap }: { snap: Snapshot }) {
   return (
@@ -198,8 +282,12 @@ export function ChartCard({ id, highlight, bump, display, compact }:
       </div>
       <h2 className="chart-title">{data.meta.title}</h2>
       {kpi ? <Kpi snap={data} /> : asTable ? <DataTable snap={data} highlight={highlight} /> : <Plot snap={data} highlight={highlight} />}
-      {!kpi && data.meta.measures.length === 1 && (
-        <p className="hint num">Total {data.totals[data.meta.measures[0].name]?.display}</p>
+      {!kpi && data.meta.measures.length === 1 && !data.meta.compare && (
+        <p className="hint num">{data.meta.measures[0].unit === "pct" ? "Overall" : "Total"} {data.totals[data.meta.measures[0].name]?.display}</p>
+      )}
+      {data.meta.compare && (
+        <p className="hint num">{data.meta.compare.current}: {data.totals[data.meta.measures[0].name]?.display} · vs {data.meta.compare.previous}
+          {" "}{fmtChange(data.meta.compare.change_pct)}</p>
       )}
       {data.meta.filters_applied.length > 0 && <p className="hint">Filters: {data.meta.filters_applied.join(" · ")}</p>}
       <p className="hint">As of {new Date(data.meta.as_of).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}

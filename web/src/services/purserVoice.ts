@@ -1,23 +1,25 @@
 // GPT-Live over WebRTC. The browser only carries audio and receives captions; the server owns the
 // session (SDP exchange) and all tool use through its sideband. The data channel may only send session.close.
-import { api } from "./api";
+import { api } from "../api";
 
 export type VoiceState = "idle" | "connecting" | "listening" | "speaking" | "error";
 export type VoiceActivity = () => void;
 
 export class LiveVoice {
+  /** Set when the browser refused microphone access (permission denied). */
+  denied = false;
   private pc?: RTCPeerConnection;
   private dc?: RTCDataChannel;
   private mic?: MediaStream;
   private audio = new Audio();
   private speakingTimer?: number;
-  /** Streams for the orb's audio meter: microphone (listening) and Munshi's voice (speaking). */
+  /** Streams for the orb's audio meter: microphone (listening) and Purser's voice (speaking). */
   micStream?: MediaStream;
   outStream?: MediaStream;
 
   constructor(
     private onState: (s: VoiceState, detail?: string) => void,
-    private onCaption: (who: "user" | "munshi", delta: string) => void,
+    private onCaption: (who: "user" | "purser", delta: string) => void,
   ) { this.audio.autoplay = true; }
 
   onActivity: VoiceActivity = () => {};
@@ -42,6 +44,7 @@ export class LiveVoice {
       const r = await api.post<{ transport: { sdp: string } }>("/api/voice/session", { sdp: pc.localDescription!.sdp, wake_text: wakeText || null });
       await pc.setRemoteDescription({ type: "answer", sdp: r.transport.sdp });
     } catch (e: any) {
+      this.denied = e?.name === "NotAllowedError" || e?.name === "SecurityError";
       this.cleanup();
       this.onState("error", e?.message || String(e));
     }
@@ -52,7 +55,7 @@ export class LiveVoice {
       case "session.started": this.onState("listening"); break;
       case "session.input_transcript.delta": this.onCaption("user", ev.delta); this.onActivity(); break;
       case "session.output_transcript.delta":
-        this.onCaption("munshi", ev.delta);
+        this.onCaption("purser", ev.delta);
         this.onActivity();
         this.onState("speaking");
         clearTimeout(this.speakingTimer);

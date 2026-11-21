@@ -1,9 +1,9 @@
-// Hands-free wake word ("Munshi"), like "Alexa" / "OK Google".
+// Hands-free wake word ("Purser"), like "Alexa" / "OK Google".
 // Uses the browser's built-in speech recognition (Chrome/Edge). Note: Chrome's recogniser streams audio
-// to the browser vendor's speech service while armed. The wake phrase only opens the Munshi session;
+// to the browser vendor's speech service while armed. The wake phrase only opens the Purser session;
 // words heard here are treated as a request, never as a confirmation (the server must hear "yes" itself).
 
-const WAKE = /\b(munshi|munshee|moonshi|munshiji|munshi ji|munchi|manshi|munsi|monshi)\b|मुंशी|मुन्शी|मुंसी/i;
+const WAKE = /\b(purser|pursar|purser ji|pursur|perser|parser|pursuer|purse her|pur sir)\b|पर्सर|पर्सार/i;
 
 type SR = any;
 const Recognition: SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -45,7 +45,7 @@ export class WakeWord {
         if (!m) continue;
         const rest = text.slice(m.index + m[0].length).replace(/^[\s,.!?ji]+/i, "").trim();
         clearTimeout(this.settleTimer);
-        // Wait briefly for the rest of the sentence ("Munshi, travel budget kitna hai"), then wake.
+        // Wait briefly for the rest of the sentence ("Purser, travel budget kitna hai"), then wake.
         const fire = () => { if (!this.fired) { this.fired = true; this.stop(); this.onWake(rest); } };
         if (e.results[i].isFinal) fire();
         else this.settleTimer = window.setTimeout(fire, 1400);

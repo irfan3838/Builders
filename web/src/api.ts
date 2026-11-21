@@ -7,25 +7,62 @@ export function setConversation(id: string) { conversationId = id; }
 export function getConversation() { return conversationId; }
 
 export class ApiError extends Error {
-  constructor(public status: number, public body: any) { super(body?.message || body?.detail || `HTTP ${status}`); }
+  constructor(public status: number, public body: any) {
+    super(typeof body?.message === "string" ? body.message : typeof body?.detail === "string" ? body.detail : status === 0 ? "You appear to be offline." : `HTTP ${status}`);
+  }
 }
 
-async function call<T>(method: string, path: string, body?: unknown, form?: FormData): Promise<T> {
-  const headers: Record<string, string> = {};
-  if (csrf && method !== "GET") headers["X-CSRF-Token"] = csrf;
-  if (conversationId) headers["X-Conversation-Id"] = conversationId;
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-  const r = await fetch(path, { method, headers, credentials: "same-origin", body: form ?? (body !== undefined ? JSON.stringify(body) : undefined) });
+function headers(json: boolean, method: string) {
+  const h: Record<string, string> = {};
+  if (csrf && method !== "GET") h["X-CSRF-Token"] = csrf;
+  if (conversationId) h["X-Conversation-Id"] = conversationId;
+  if (json) h["Content-Type"] = "application/json";
+  return h;
+}
+
+async function call<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  let r: Response;
+  try {
+    r = await fetch(path, { method, headers: headers(body !== undefined, method), credentials: "same-origin", body: body !== undefined ? JSON.stringify(body) : undefined, signal });
+  } catch (e: any) {
+    if (e?.name === "AbortError") throw e;
+    throw new ApiError(0, { message: "Network unavailable. Check your connection and retry." });
+  }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new ApiError(r.status, data);
   return data as T;
 }
 
+/** Multipart upload with real byte progress (XHR), cancellable. */
+function uploadWithProgress<T>(path: string, file: File, onProgress: (p: number) => void, signal?: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", path);
+    xhr.withCredentials = true;
+    Object.entries(headers(false, "POST")).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    xhr.upload.onload = () => onProgress(1);
+    xhr.onload = () => {
+      let data: any = {};
+      try { data = JSON.parse(xhr.responseText); } catch { /* non-JSON */ }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data as T); else reject(new ApiError(xhr.status, data));
+    };
+    xhr.onerror = () => reject(new ApiError(0, { message: "Upload failed: network unavailable." }));
+    xhr.onabort = () => reject(Object.assign(new Error("Upload cancelled"), { name: "AbortError" }));
+    signal?.addEventListener("abort", () => xhr.abort());
+    const fd = new FormData();
+    fd.append("file", file);
+    xhr.send(fd);
+  });
+}
+
 export const api = {
-  get: <T>(p: string) => call<T>("GET", p),
-  post: <T>(p: string, b?: unknown) => call<T>("POST", p, b ?? {}),
-  upload: <T>(p: string, f: File) => { const fd = new FormData(); fd.append("file", f); return call<T>("POST", p, undefined, fd); },
+  get: <T>(p: string, signal?: AbortSignal) => call<T>("GET", p, undefined, signal),
+  post: <T>(p: string, b?: unknown, signal?: AbortSignal) => call<T>("POST", p, b ?? {}, signal),
+  upload: uploadWithProgress,
 };
 
 export type Card = { card: string; [k: string]: any };
 export type Me = { id: number; name: string; role: string; csrf: string };
+
+export const inr = (paise: number | null | undefined) => paise == null ? "—" : "₹" + new Intl.NumberFormat("en-IN").format(Math.round(paise / 100));

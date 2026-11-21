@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, Card } from "./api";
 import { ChartCard, ViewCard } from "./ChartCard";
+import { ContractCard, ContractClauseCard, ContractDeadlinesCard, ContractReviewCard, LiabilitiesCard } from "./ContractCard";
 import { FxRatesCard, InvoiceCard, RevenueCard } from "./RevenueCard";
 
 function useLoad<T>(path: string | null, bump = 0) {
@@ -55,7 +56,7 @@ function ProposalCard({ id, bump, onChanged }: { id: string; bump: number; onCha
         <div className="actions">
           <button className="btn btn-ok" disabled={busy} onClick={() => act("confirm")}>Confirm</button>
           <button className="btn" disabled={busy} onClick={() => act("cancel")}>Cancel</button>
-          <span className="hint">or say “haan” / “yes” after Munshi reads it out</span>
+          <span className="hint">or say “haan” / “yes” after Purser reads it out</span>
         </div>
       )}
       {msg && <p className="hint" role="status">{msg}</p>}
@@ -200,10 +201,12 @@ function RecordCard({ refId, bump }: { refId: string; bump: number }) {
   );
 }
 
-function ListCard({ items }: { items: any[] }) {
+const LIST_KIND: Record<string, string> = { attention: "Needs attention", contracts: "Contracts", revenue: "Revenue" };
+
+function ListCard({ items, hint }: { items: any[]; hint?: string }) {
   return (
     <section className="card">
-      <div className="card-head"><span className="kind">Needs attention</span><h2>{items.length} item{items.length === 1 ? "" : "s"}</h2></div>
+      <div className="card-head"><span className="kind">{LIST_KIND[hint ?? "attention"] ?? "Records"}</span><h2>{items.length} item{items.length === 1 ? "" : "s"}</h2></div>
       <ol className="list">
         {items.map((i) => (
           <li key={i.ref}><span><strong>{i.who}</strong> <span className="ref">{i.ref}</span><div className="sub">{i.kind.replaceAll("_", " ")}{i.detail ? ` · ${i.detail}` : ""}</div></span>
@@ -326,7 +329,7 @@ export function CardView({ card, bump, onChanged, onOpen }: { card: Card; bump: 
     case "budget": return <BudgetCard lineId={card.line_id} showLedger={false} bump={bump} />;
     case "ledger": return <BudgetCard lineId={card.line_id} showLedger bump={bump} />;
     case "record": return <RecordCard refId={card.ref} bump={bump} />;
-    case "record_list": return <ListCard items={card.items || []} />;
+    case "record_list": return <ListCard items={card.items || []} hint={card.title_hint} />;
     case "audit_trail": return <AuditCard refId={card.ref || undefined} bump={bump} />;
     case "inbox": return <InboxCard bump={bump} />;
     case "leave": return <LeaveCard userId={card.user_id} bump={bump} />;
@@ -338,6 +341,12 @@ export function CardView({ card, bump, onChanged, onOpen }: { card: Card; bump: 
       onOpen={(ref) => onOpen?.({ card: "invoice", ref })} />;
     case "invoice": return <InvoiceCard refId={card.ref} bump={bump} />;
     case "fx_rates": return <FxRatesCard fy={card.fy} bump={bump} />;
+    case "contract_review": return <ContractReviewCard documentId={card.document_id} bump={bump} />;
+    case "contract": return <ContractCard refId={card.ref} bump={bump} />;
+    case "contract_liabilities": return <LiabilitiesCard bump={bump} filters={{ bearer: card.bearer, risk: card.risk,
+      counterparty: card.counterparty, contract: card.contract, undecided_only: card.undecided_only }} />;
+    case "contract_deadlines": return <ContractDeadlinesCard days={card.days} bump={bump} />;
+    case "contract_clause": return <ContractClauseCard findingId={card.finding_id} bump={bump} />;
     default: return null;
   }
 }
@@ -349,5 +358,9 @@ export function cardKey(c: Card): string {
   if (c.card === "view") return "view:" + c.title;
   if (c.card === "revenue") return "revenue";  // one revenue board; a new period/client replaces it
   if (c.card === "fx_rates") return "fx_rates";
+  if (c.card === "claim_review") return "claim_review";  // one claim under review; the newest replaces it
+  if (c.card === "contract_liabilities") return "contract_liabilities";  // one list; new filters replace it
+  if (c.card === "contract_deadlines") return "contract_deadlines";
+  if (c.card === "contract_clause") return "contract_clause:" + c.finding_id;
   return c.card + ":" + (c.proposal_id ?? c.receipt_id ?? c.document_id ?? c.line_id ?? c.user_id ?? c.scope ?? c.ref ?? JSON.stringify(c.items?.map((i: any) => i.ref) ?? ""));
 }
