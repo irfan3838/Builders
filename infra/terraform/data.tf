@@ -193,3 +193,16 @@ resource "aws_secretsmanager_secret_version" "serpapi_api_key" {
     ignore_changes = [secret_string]
   }
 }
+
+resource "aws_secretsmanager_secret" "langsmith_api_key" {
+  name                    = "${local.name}/langsmith-api-key"
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "langsmith_api_key" {
+  secret_id     = aws_secretsmanager_secret.langsmith_api_key.id
+  secret_string = "replace-me" # app treats this as "tracing off" until aws_put_secrets copies the real value
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}

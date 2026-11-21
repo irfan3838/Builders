@@ -29,6 +29,10 @@ from app.services import budget, intake, proposals, records, storage  # noqa: E4
 logging.basicConfig(level=get_settings().log_level.upper(), format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
+from app import tracing  # noqa: E402
+
+tracing.setup()
+
 from contextlib import asynccontextmanager  # noqa: E402
 
 

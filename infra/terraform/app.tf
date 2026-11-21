@@ -9,6 +9,7 @@ locals {
     GOOGLE_CLIENT_SECRET = aws_secretsmanager_secret.google_client_secret.arn
     GOOGLE_REFRESH_TOKEN = aws_secretsmanager_secret.google_refresh_token.arn
     SERPAPI_API_KEY      = aws_secretsmanager_secret.serpapi_api_key.arn
+    LANGSMITH_API_KEY    = aws_secretsmanager_secret.langsmith_api_key.arn
   }
   app_origin = "https://${aws_cloudfront_distribution.app.domain_name}"
   environment = merge({

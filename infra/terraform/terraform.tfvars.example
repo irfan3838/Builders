@@ -7,4 +7,9 @@ app_env = {
   EMAIL_ALLOWED_RECIPIENTS = "you@example.com"
   GOOGLE_CLIENT_ID         = "1234-abc.apps.googleusercontent.com"
   GOOGLE_LINKED_EMAIL      = "you@gmail.com" # the one login whose real Gmail + Calendar Purser uses
+  # LangSmith tracing (API key lives in Secrets Manager munshi/langsmith-api-key)
+  LANGSMITH_TRACING           = "true"
+  LANGSMITH_ENDPOINT          = "https://api.smith.langchain.com"
+  LANGSMITH_AGENT_ID          = "purser"
+  LANGSMITH_AGENT_ENVIRONMENT = "production" # local on your laptop
 }
