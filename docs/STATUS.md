@@ -17,11 +17,13 @@ Deployment status: **LOCAL ONLY**. Nothing is provisioned on AWS.
 - A single `MunshiAgent` (`app/agent/munshi.py`, prompt in `app/agent/prompts/munshi.md`) with `RunContextWrapper[MunshiContext]`. Tools read the actor and workspace from that context, never from model arguments.
 - Conversation memory is a `SQLAlchemySession` keyed by conversation.
 - A vision `ExtractorAgent` (`app/agent/extractor.py`) produces structured output and has no tools. Arithmetic is checked in Python afterwards.
-- There are 28 tools:
+- There are 44 tools:
   - **Finance reads:** `get_budget_status`, `list_budget_categories`, `explain_budget_change`, `resolve_party`, `get_attention_items`, `get_record`, `get_audit_history`.
   - **Intake:** `inspect_document`, `correct_extracted_field`, `find_reservations`, `close_intake`, `show_source`.
   - **Finance proposals:** `propose_submit_claim`, `propose_submit_bill`, `propose_approval`, `propose_settlement`.
   - **Proposal handling:** `get_pending_proposal`, `confirm_pending_proposal`, `cancel_pending_proposal`.
+  - **Monthly budget:** `get_budget_month`, `get_budget_year`, `get_budget_alerts`, `get_budget_recommendations`, `forecast_budget`, `what_if`, `get_budget_history`, `propose_budget_change`, `propose_close_month`, `propose_apply_recommendations`.
+  - **Charts and views:** `describe_chart_options`, `build_chart`, `revise_chart`, `read_chart_value`, `present_view`.
   - **People ops:** `find_people`, `get_leave_balance`, `list_leave_requests`, `propose_leave`, `propose_leave_decision`, `propose_onboarding`, `propose_message`, `read_inbox`, `get_onboarding_status`, `lookup_policy`.
 - A text channel (`POST /api/agent/text`) and `scripts/text_harness.py` run the same agent and tools as voice.
 
@@ -111,21 +113,61 @@ Deployment status: **LOCAL ONLY**. Nothing is provisioned on AWS.
   - use the fast model for routing.
 - [ ] Measure and log each stage's latency: upload, render, extract and agent turn.
 
-### 2.3 Dynamic charts and views (PLAN_v4 §4a and §4b, not built yet)
-- [ ] `ChartSpec`/`ChartSpecPatch` schemas, a measure and dimension registry, and a SQLAlchemy Core builder. The builder is scoped to the workspace and role, and the model never writes SQL.
-- [ ] The tools `build_chart`, `revise_chart`, `read_chart_value`, `describe_chart_options` and `present_view` (`ViewSpec`).
-- [ ] `result_snapshots`: the chart, the table and the spoken answer all read from one snapshot.
-- [ ] A generic ECharts `ChartCard` with a `snapshotToOption()` mapper and a table toggle.
-- [ ] The receivables demo: "kaun paisa dena baaki hai" → "sirf overdue" → "Acme ka amount padho".
-- [ ] Fallback if time runs short: register only the receivables measures.
-- [ ] Sonnet test gate (new agent). Tests to cover:
-  - an unknown or incompatible spec is rejected;
-  - totals equal the source rows;
-  - a revision keeps the grouping;
-  - `read_value` uses the filtered snapshot;
-  - workspace and role scoping;
-  - a line chart needs a time dimension;
-  - the budget position equals ₹45,200.
+### 2.3 Dynamic charts and views: BUILT, Sonnet gate passed
+- [x] `app/services/charts.py` contains:
+  - `ChartSpec`, `ChartSpecPatch` and `ViewSpec`, all enum-limited;
+  - a registry of 4 sources (receivables, payables, claims, budget) with 14 measures and 12 dimensions;
+  - a SQLAlchemy Core compiler scoped to the workspace and role. It has a 3 s statement timeout and a 500-group cap, and filter values are matched against real records (ambiguous values return `AMBIGUOUS`);
+  - chart-type rules, plus a deterministic `auto` picker;
+  - top_n and >3-series folding into "Other", and month gap-fill.
+- [x] Tools `build_chart`, `revise_chart`, `read_chart_value`, `describe_chart_options` and `present_view`. The prompt now has a "Charts and views" section that pins down the direction of money.
+- [x] `result_snapshots` (the table already existed) drive the chart, the table and the speech. `read_chart_value` reads the stored rows and never queries again. `GET /api/snapshots/{id}` is readable only by the owner.
+- [x] `web/src/ChartCard.tsx`:
+  - a generic ECharts card built from `snapshotToOption()`;
+  - ₹ K/L/Cr axes, a table toggle with source refs, and a highlight for the value that was read;
+  - KPI tiles, a `ViewCard`, and the active filters listed under the chart;
+  - a revision replaces its earlier card through `lineage`.
+- [x] Receivables demo, verified through the real agent (text harness) and in the browser: "kaun paisa dena baaki hai" → ₹5,42,700, then "sirf overdue" → ₹2,34,700 with the customer grouping kept, then "Acme ka amount padho" → ₹1,25,000 with the bar highlighted.
+- [x] Sonnet test gate `tests/test_charts.py` (agent `sonnet-tester-charts`):
+  - 51 tests, all passing, with no strict-xfail bugs; `ruff check tests/` passes.
+  - Full suite: 319 passed and 2 failed. Both failures were mistakes in the tester's own new tests, not app bugs, and are now fixed. With them, `test_charts.py` passes 51/51 on its own.
+  - Since confirmed by the 2.3b full-suite run (353 passed).
+- Known behaviour (by design):
+  - at most 3 measures per chart;
+  - filter matching falls back to substring matching;
+  - punctuation is stripped before matching, so `Acme%' --` resolves to an ambiguous "acme" (a clean error, no SQL).
+- Note: running the Vite dev server on :5173 needs `APP_ORIGIN=http://localhost:5173` for the API's origin check.
+
+### 2.3b Monthly budget brain, ported from the user's copilot (BUILT, Sonnet gate passed)
+Gap analysis and plan are in `~/.claude/plans/this-code-was-written-starry-knuth-*.md`. Out of scope before the freeze:
+- MIS/type hierarchy;
+- reject, send back, two-level and bulk approval;
+- payment batches and bank files;
+- workbook import/export.
+
+What is built:
+- [x] **Migration `3b068d9a8dab_budget_months`:** adds `budget_movements.fiscal_month` (with a backfill) and a `budget_periods` table, where a closed month freezes its actual and status.
+- [x] **Ported pure maths:** `app/services/budgeting/` holds the user's own earlier code: pacing, status bands, forecast, projection, distribution and trend + plan.
+- [x] **Service:** `app/services/budget_months.py` provides the month grid, alerts, transfer/top-up/reduce with guards, month close with variance reason and carry-over, recommendations with the apply-once plan, forecasts, what-if and history.
+- [x] **Actions:** `budget_change`, `close_month` and `apply_recommendations` all go through propose → confirm → receipt.
+- [x] **Ten new agent tools** (44 in total), plus a prompt section. The bell (`get_attention_items`) now includes budget alerts, months due for close and open recommendations.
+- [x] **Charts:** a `budget_month` dimension and the `budget_actual`/`budget_remaining` measures.
+- [x] **UI:** a 12-month strip on the budget card, served by `GET /api/budget/lines/{id}/months`.
+- [x] **Seed:**
+  - a monthly plan from Jul 2026 with the annual totals unchanged (Travel still ₹45,000 → ₹45,200);
+  - Jul–Sep closed as a synthetic imported snapshot, with **October left open on purpose**;
+  - Office Supplies at its November limit.
+- [x] **Verified through the real agent (text harness, Hinglish):**
+  - alert → month budget;
+  - "October close karo" (reasons from speech, ₹2,500 Events carry-over) → a recommendation appears (Events −66.7%, IT & Cloud +68.4%; plan: ₹1,666 transfer + ₹8,600 top-up) → applied with "haan";
+  - what-if (IT +15% from Dec);
+  - a transfer;
+  - history.
+
+  The budget card was checked in the browser.
+- [x] Sonnet gate `tests/test_budget_months.py` (32 tests, no bugs):
+  - Final full-suite run: **353 passed, 0 failed, 0 xfailed**; `ruff check tests/` clean.
+  - One existing test was updated for the seed change: `test_ledger_extra.py::test_double_settle_via_two_open_proposals_executes_once` now checks spent before + the bill amount, because of ₹9,400 of imported Jul–Sep actuals.
 
 ### 2.4 Roles and failure paths (PLAN_v4 H13–15)
 - [ ] Confirm the gates already covered by the existing tests:

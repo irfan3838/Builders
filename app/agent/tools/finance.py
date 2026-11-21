@@ -104,6 +104,17 @@ async def _attention(s, a) -> list[dict]:
                 Invoice.workspace_id == a.workspace_id, Invoice.due_date < today, Invoice.amount_paise > Invoice.paid_paise))).all():
             items.append({"kind": "overdue_invoice", "ref": inv.number, "who": p.name, "amount_paise": inv.amount_paise - inv.paid_paise,
                           "date": inv.due_date.isoformat(), "detail": f"{(today - inv.due_date).days} days overdue"})
+        from app.services import budget_months as bm
+        bell = await bm.alerts(s, a, today)
+        for al in bell["alerts"]:
+            items.append({"kind": "budget_alert", "ref": al["category"], "who": al["month"], "amount_paise": 0,
+                          "date": today.isoformat(), "detail": f"{al['alert']}: {al['spent']} of {al['budget']}"})
+        for m in bell["months_due_for_close"]:
+            items.append({"kind": "month_due_for_close", "ref": m, "who": "Budget", "amount_paise": 0, "date": today.isoformat(),
+                          "detail": "close the month to freeze actuals"})
+        if bell.get("recommendations_open"):
+            items.append({"kind": "budget_recommendations", "ref": f"{bell['recommendations_open']} open", "who": "Budget",
+                          "amount_paise": 0, "date": today.isoformat(), "detail": "3-month trend suggests moving budget"})
     else:
         for c in (await s.execute(select(Claim).where(Claim.workspace_id == a.workspace_id, Claim.beneficiary_party_id == a.party_id,
                                                       Claim.settlement_state == "unpaid"))).scalars():

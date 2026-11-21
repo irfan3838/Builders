@@ -244,6 +244,30 @@ async def budget_line(line_id: int, actor: Actor = auth.ActorDep) -> dict:
                            "kind": m.kind, "memo": m.memo, "receipt": refs.get(m.receipt_id), "at": m.created_at.isoformat()} for m in mv]}
 
 
+@app.get("/api/budget/lines/{line_id}/months")
+async def budget_line_months(line_id: int, actor: Actor = auth.ActorDep) -> dict:
+    """The FY month by month for one line: budget, actual, remaining, status, closed, pacing (current month)."""
+    from app.services import budget_months as bm
+    from app.services.records import today_ist
+    today = today_ist()
+    async with db.session_scope() as s:
+        line = await budget.get_line(s, actor.workspace_id, line_id=line_id)
+        cells = await bm.grid(s, actor, today, category=line.category)
+    return {"line_id": line.id, "category": line.category, "as_of": today.isoformat(),
+            "months": [{"month": c.month.isoformat(), "label": c.month.strftime("%b"), "budget_paise": c.adjusted, "actual_paise": c.actual,
+                        "budget": format_inr(c.adjusted), "actual": format_inr(c.actual), "remaining": format_inr(c.remaining),
+                        "status": c.status, "closed": c.closed, "when": c.when, "snapshot": c.source == "imported_snapshot",
+                        "pacing": c.pacing} for c in cells]}
+
+
+@app.get("/api/snapshots/{snapshot_id}")
+async def snapshot_card(snapshot_id: str, actor: Actor = auth.ActorDep) -> dict:
+    """Chart/table data. The same stored snapshot the agent spoke from; readable only by the actor who built it."""
+    from app.services import charts
+    async with db.session_scope() as s:
+        return charts.public(await charts.load(s, actor, snapshot_id))
+
+
 @app.get("/api/records/{ref}")
 async def record_detail(ref: str, actor: Actor = auth.ActorDep) -> dict:
     from app.models import Claim

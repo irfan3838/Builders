@@ -304,6 +304,7 @@ async def test_double_settle_via_two_open_proposals_executes_once(seeded):
     priya, priya2, b = await make_actor(seeded), await make_actor(seeded), await seeded_bill("approved")
     a = await create_presented(priya, "settle", {"ref": b.ref, "reference": "UTR-A"})
     c = await create_presented(priya2, "settle", {"ref": b.ref, "reference": "UTR-B"})
+    spent_before = (await line_pos("Office Supplies"))["spent_paise"]  # seed includes imported Jul-Sep actuals (Rs 9,400)
     async with db.session_scope() as s:
         assert (await proposals.confirm(s, priya, a.id, via="button")).status == "executed"
     with pytest.raises(DomainError) as e:  # stale -> re-plan -> already settled
@@ -311,7 +312,7 @@ async def test_double_settle_via_two_open_proposals_executes_once(seeded):
             await proposals.confirm(s, priya2, c.id, via="button")
     assert e.value.code == ALREADY_SETTLED
     assert await count(Settlement, Settlement.record_id == b.id, Settlement.record_type == "bill") == 1
-    assert (await line_pos("Office Supplies"))["spent_paise"] == b.amount_paise
+    assert (await line_pos("Office Supplies"))["spent_paise"] == spent_before + b.amount_paise
     await assert_conservation()
 
 

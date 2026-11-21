@@ -92,8 +92,21 @@ async def seed(s: AsyncSession, *, workspace_name: str = "Munshi Demo Traders Pv
         lines[cat] = BudgetLine(workspace_id=W, category=cat, department=dept[cat], fy=FY)
     s.add_all(lines.values())
     await s.flush()
-    for cat, amt in alloc.items():
-        await budget.post(s, W, lines[cat].id, "allocation", amt * L, "opening_allocation", memo=f"{FY} opening allocation")
+    # Monthly plan (Munshi went live in Jul 2026, so Apr-Jun carry no budget). Annual totals equal `alloc`.
+    # (Jul-Oct, Nov, Dec-Mar) monthly amounts in rupees. Travel is planned from the Pune trip month onwards.
+    fy_months = [date(2026, m, 1) for m in range(4, 13)] + [date(2027, m, 1) for m in (1, 2, 3)]
+    profile = {
+        "Travel": (0, 10_000, 10_000), "IT & Cloud": (15_000, 31_000, 27_250), "Events": (2_500, 4_500, 3_875),
+        "Office Supplies": (3_000, 11_000, 4_250), "Logistics": (2_000, 3_800, 3_300), "Conveyance": (1_250, 2_000, 2_000),
+    }
+    for cat, (jul_oct, nov, dec_mar) in profile.items():
+        plan = {m: (0 if m.month in (4, 5, 6) else jul_oct if m.month in (7, 8, 9, 10) else nov if m.month == 11 else dec_mar)
+                for m in fy_months}
+        assert sum(plan.values()) == alloc[cat], cat
+        for m, rupees in plan.items():
+            if rupees:
+                await budget.post(s, W, lines[cat].id, "allocation", rupees * L, "opening_allocation",
+                                  memo=f"{FY} opening allocation", fiscal_month=m)
 
     trip = Trip(workspace_id=W, employee_party_id=arjun_p.id, city="Pune", start_date=date(2026, 11, 16),
                 end_date=date(2026, 11, 19), purpose="Client visits, Pune (synthetic)")
@@ -104,7 +117,7 @@ async def seed(s: AsyncSession, *, workspace_name: str = "Munshi Demo Traders Pv
     s.add(rs)
     await s.flush()
     await budget.post(s, W, lines["Travel"].id, "reserved", rs.amount_paise, "reservation_opened",
-                      source_type="reservation", source_id=rs.id, memo="RS1 hotel reservation for Arjun's Pune trip")
+                      source_type="reservation", source_id=rs.id, fiscal_month=trip.start_date, memo="RS1 hotel reservation for Arjun's Pune trip")
 
     async def bill(vkey, cat, rupees, bdate, due, state, settled_ref=None, inv=None, desc=None):
         b = Bill(workspace_id=W, ref="pending", vendor_party_id=vendors[vkey].id, invoice_no=inv, description=desc,
@@ -115,14 +128,14 @@ async def seed(s: AsyncSession, *, workspace_name: str = "Munshi Demo Traders Pv
         await s.flush()
         b.ref = f"B{b.id}"
         if state == "approved":
-            await budget.post(s, W, b.line_id, "committed", b.amount_paise, "bill_approved", source_type="bill", source_id=b.id,
+            await budget.post(s, W, b.line_id, "committed", b.amount_paise, "bill_approved", source_type="bill", source_id=b.id, fiscal_month=bdate,
                               economic_event_id=b.economic_event_id, memo=f"{b.ref} approved (seed)")
         if settled_ref:
             s.add(Settlement(workspace_id=W, record_type="bill", record_id=b.id, amount_paise=b.amount_paise,
                              business_date=due or bdate, reference=settled_ref, recorded_by=priya.id))
-            await budget.post(s, W, b.line_id, "committed", -b.amount_paise, "bill_settled", source_type="bill", source_id=b.id,
+            await budget.post(s, W, b.line_id, "committed", -b.amount_paise, "bill_settled", source_type="bill", source_id=b.id, fiscal_month=bdate,
                               economic_event_id=b.economic_event_id)
-            await budget.post(s, W, b.line_id, "spent", b.amount_paise, "bill_settled", source_type="bill", source_id=b.id,
+            await budget.post(s, W, b.line_id, "spent", b.amount_paise, "bill_settled", source_type="bill", source_id=b.id, fiscal_month=bdate,
                               economic_event_id=b.economic_event_id)
         return b
 
@@ -189,6 +202,22 @@ async def seed(s: AsyncSession, *, workspace_name: str = "Munshi Demo Traders Pv
     s.add(Message(workspace_id=W, ref="M0", kind="announcement", channel="inbox", sender_id=priya.id, recipient_user_id=arjun.id,
                   subject="Quarter-end expense deadline", body="Please submit all pending expense claims by 30 November.",
                   status="delivered"))
+    await s.flush()
+
+    # ---- budget history: Jul-Sep are an imported historical snapshot (synthetic month-end actuals, no bills).
+    # October is left OPEN on purpose: closing it (by voice) completes three closed months and surfaces the trend.
+    from app.actor import Actor
+    from app.services import budget_months as bm
+    admin = Actor(priya.id, W, priya.role, priya_p.id, priya.display_name)
+    snapshot = {"IT & Cloud": (15_000, 18_000, 18_000), "Events": (2_400, 1_000, 1_500), "Office Supplies": (3_000, 3_500, 2_900),
+                "Logistics": (2_000, 2_100, 1_900), "Conveyance": (1_200, 1_200, 1_300)}
+    for i, m in enumerate((date(2026, 7, 1), date(2026, 8, 1), date(2026, 9, 1))):
+        for cat, actuals in snapshot.items():
+            await budget.post(s, W, lines[cat].id, "spent", actuals[i] * L, "imported_actual", source_type="snapshot",
+                              memo=f"Imported historical actual for {m:%b %Y} (synthetic)", fiscal_month=m)
+        await s.flush()
+        _m, nxt, rows = await bm.plan_close(s, admin, date(2026, 11, 21), m.isoformat()[:7], variances={}, carry_over=[])
+        await bm.apply_close(s, admin, m, nxt, rows, None, source="imported_snapshot")
     await s.flush()
     return {"workspace_id": W, "neha_id": neha.id, "neha_leave_ref": lr.ref, "priya_id": priya.id, "arjun_id": arjun.id, "travel_line_id": lines["Travel"].id,
             "reservation_id": rs.id, "arjun_party_id": arjun_p.id, "priya_party_id": priya_p.id, "neha_claim_ref": c.ref}

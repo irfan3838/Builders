@@ -2,6 +2,7 @@
 // by reference (proposal id, receipt id, document id, budget line, record ref), never from model text.
 import { useEffect, useState } from "react";
 import { api, Card } from "./api";
+import { ChartCard, ViewCard } from "./ChartCard";
 
 function useLoad<T>(path: string | null, bump = 0) {
   const [data, setData] = useState<T | null>(null);
@@ -135,6 +136,7 @@ function BudgetCard({ lineId, showLedger, bump }: { lineId: number; showLedger: 
         {b("allocated_paise", "Allocated")}{b("reserved_paise", "Reserved")}{b("committed_paise", "Committed")}{b("spent_paise", "Spent")}{b("available_paise", "Available", "available")}
       </div>
       {p.pending_claims_paise.paise > 0 && <p className="hint num">Pending claims not yet in budget: {p.pending_claims_paise.inr}</p>}
+      <MonthStrip lineId={lineId} bump={bump} />
       {showLedger && (
         <table className="ledger" aria-label={`${data.category} ledger movements`}>
           <thead><tr><th>Movement</th><th>Bucket</th><th>Receipt</th><th style={{ textAlign: "right" }}>Amount</th></tr></thead>
@@ -148,6 +150,37 @@ function BudgetCard({ lineId, showLedger, bump }: { lineId: number; showLedger: 
       )}
       <p className="hint">Available = allocated − reserved − committed − spent</p>
     </section>
+  );
+}
+
+const STATUS_WORD: Record<string, string> = { OVERRUN: "Over", ON_TRACK: "On track", UNDERUSED: "Under", OPEN: "No budget" };
+
+/** The FY month by month: budget vs actual bars, a status word under each month (never colour alone). */
+function MonthStrip({ lineId, bump }: { lineId: number; bump: number }) {
+  const { data } = useLoad<any>(`/api/budget/lines/${lineId}/months`, bump);
+  if (!data) return null;
+  const months = data.months.filter((m: any) => m.budget_paise || m.actual_paise);
+  if (!months.length) return null;
+  const top = Math.max(...months.map((m: any) => Math.max(m.budget_paise, m.actual_paise)), 1);
+  const cur = months.find((m: any) => m.when === "current");
+  return (
+    <div className="months" aria-label={`${data.category} by month`}>
+      <div className="months-grid" style={{ gridTemplateColumns: `repeat(${months.length}, 1fr)` }}>
+        {months.map((m: any) => (
+          <div key={m.month} className={`mcell ${m.when} st-${m.status}`}
+               title={`${m.label}: budget ${m.budget}, spent ${m.actual}, remaining ${m.remaining}${m.closed ? " (closed)" : ""}${m.snapshot ? " · imported snapshot" : ""}`}>
+            <div className="mbars">
+              <span className="mbar budget" style={{ height: `${(m.budget_paise / top) * 100}%` }} />
+              <span className="mbar actual" style={{ height: `${(m.actual_paise / top) * 100}%` }} />
+            </div>
+            <div className="mlabel">{m.label}{m.closed ? " ✓" : ""}</div>
+            <div className="mstatus">{m.when === "future" ? "" : STATUS_WORD[m.status] ?? m.status}</div>
+          </div>
+        ))}
+      </div>
+      <p className="hint"><span className="key budget" /> budget <span className="key actual" /> spent · ✓ closed
+        {cur?.pacing ? ` · this month ${cur.pacing.actual_pct}% used, ${cur.pacing.expected_pct}% of the month gone` : ""}</p>
+    </div>
   );
 }
 
@@ -298,11 +331,16 @@ export function CardView({ card, bump, onChanged }: { card: Card; bump: number; 
     case "leave": return <LeaveCard userId={card.user_id} bump={bump} />;
     case "leave_requests": return <LeaveRequestsCard scope={card.scope || "mine"} bump={bump} />;
     case "person": return <PersonCard userId={card.user_id} bump={bump} />;
+    case "chart": return <ChartCard id={card.snapshot_id} highlight={card.highlight} bump={bump} />;
+    case "view": return <ViewCard title={card.title} items={card.items || []} bump={bump} />;
     default: return null;
   }
 }
 
 /** Collapse repeats: the newest card for the same object replaces the older one. */
 export function cardKey(c: Card): string {
+  // A revised chart (same lineage) replaces the earlier version of itself.
+  if (c.card === "chart") return "chart:" + (c.lineage ?? c.snapshot_id);
+  if (c.card === "view") return "view:" + c.title;
   return c.card + ":" + (c.proposal_id ?? c.receipt_id ?? c.document_id ?? c.line_id ?? c.user_id ?? c.scope ?? c.ref ?? JSON.stringify(c.items?.map((i: any) => i.ref) ?? ""));
 }

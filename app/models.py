@@ -140,6 +140,30 @@ class BudgetMovement(Base, TimestampMixin):
     economic_event_id: Mapped[str | None] = mapped_column(String(40))
     receipt_id: Mapped[int | None] = mapped_column(BigInteger)
     memo: Mapped[str | None] = mapped_column(String(300))
+    # First day of the budget month this movement belongs to (the record's business month for actuals,
+    # the planned month for allocations). Null only for legacy annual rows.
+    fiscal_month: Mapped[date | None] = mapped_column(Date, index=True)
+
+
+class BudgetPeriod(Base, TimestampMixin):
+    """One category-month. Open months read the ledger; a closed month keeps its frozen actual and status."""
+
+    __tablename__ = "budget_periods"
+    __table_args__ = (UniqueConstraint("line_id", "fiscal_month", name="uq_budget_period_line_month"),)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    line_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    fiscal_month: Mapped[date] = mapped_column(Date)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_by: Mapped[int | None] = mapped_column(BigInteger)
+    adjusted_paise: Mapped[int | None] = mapped_column(BigInteger)  # frozen at close
+    actual_paise: Mapped[int | None] = mapped_column(BigInteger)  # frozen at close
+    status: Mapped[str | None] = mapped_column(String(20))  # OPEN | UNDERUSED | ON_TRACK | OVERRUN
+    source: Mapped[str] = mapped_column(String(30), default="ledger")  # ledger | imported_snapshot
+    variance_reason: Mapped[str | None] = mapped_column(String(60))
+    variance_note: Mapped[str | None] = mapped_column(String(300))
+    surplus_action: Mapped[str | None] = mapped_column(String(20))  # carried | absorbed
+    receipt_id: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class Document(Base, TimestampMixin):

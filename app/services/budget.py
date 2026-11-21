@@ -7,6 +7,8 @@ between buckets.
 
 from __future__ import annotations
 
+from datetime import date
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +16,16 @@ from app.errors import NOT_FOUND, DomainError
 from app.models import BudgetLine, BudgetMovement, Claim
 
 BUCKETS = ("allocation", "reserved", "committed", "spent")
+
+
+def month_start(d: date) -> date:
+    return d.replace(day=1)
+
+
+def today_ist() -> date:
+    from app.services.records import today_ist as t
+
+    return t()
 
 
 async def get_line(s: AsyncSession, workspace_id: int, *, line_id: int | None = None, category: str | None = None) -> BudgetLine:
@@ -71,6 +83,7 @@ async def post(
     economic_event_id: str | None = None,
     receipt_id: int | None = None,
     memo: str | None = None,
+    fiscal_month: date | None = None,
 ) -> BudgetMovement:
     assert bucket in BUCKETS, bucket
     m = BudgetMovement(
@@ -84,6 +97,7 @@ async def post(
         economic_event_id=economic_event_id,
         receipt_id=receipt_id,
         memo=memo,
+        fiscal_month=month_start(fiscal_month) if fiscal_month else month_start(today_ist()),
     )
     s.add(m)
     await s.flush()

@@ -201,11 +201,11 @@ class ApproveClaim:
         if res and c.reservation_treatment == "final":
             await budget.post(s, actor.workspace_id, line.id, "reserved", -res.amount_paise, "reservation_release",
                               source_type="reservation", source_id=res.id, economic_event_id=c.economic_event_id,
-                              receipt_id=receipt_id, memo=f"{res.ref} replaced by final charge {c.ref}")
+                              receipt_id=receipt_id, memo=f"{res.ref} replaced by final charge {c.ref}", fiscal_month=c.business_date)
             res.status, res.version = "released", res.version + 1
         await budget.post(s, actor.workspace_id, line.id, "committed", c.amount_paise, "claim_approved",
                           source_type="claim", source_id=c.id, economic_event_id=c.economic_event_id,
-                          receipt_id=receipt_id, memo=f"{c.ref} approved")
+                          receipt_id=receipt_id, memo=f"{c.ref} approved", fiscal_month=c.business_date)
         c.state, c.approver_id, c.version = "approved", actor.user_id, c.version + 1
         after = await budget.position(s, actor.workspace_id, line.id)
         await audit.record(s, actor, "claim.approved", record_type="claim", record_id=c.id, record_ref=c.ref,
@@ -267,9 +267,11 @@ class Settle:
         s.add(Settlement(workspace_id=actor.workspace_id, record_type=rtype, record_id=rec.id, amount_paise=rec.amount_paise,
                          business_date=bdate, reference=reference, recorded_by=actor.user_id, receipt_id=receipt_id))
         await budget.post(s, actor.workspace_id, line.id, "committed", -rec.amount_paise, f"{rtype}_settled",
-                          source_type=rtype, source_id=rec.id, economic_event_id=rec.economic_event_id, receipt_id=receipt_id)
+                          source_type=rtype, source_id=rec.id, economic_event_id=rec.economic_event_id, receipt_id=receipt_id,
+                          fiscal_month=rec.business_date)
         await budget.post(s, actor.workspace_id, line.id, "spent", rec.amount_paise, f"{rtype}_settled",
-                          source_type=rtype, source_id=rec.id, economic_event_id=rec.economic_event_id, receipt_id=receipt_id)
+                          source_type=rtype, source_id=rec.id, economic_event_id=rec.economic_event_id, receipt_id=receipt_id,
+                          fiscal_month=rec.business_date)
         rec.settlement_state, rec.version = "settled", rec.version + 1
         after = await budget.position(s, actor.workspace_id, line.id)
         await audit.record(s, actor, f"{rtype}.settled", record_type=rtype, record_id=rec.id, record_ref=rec.ref,
@@ -373,7 +375,8 @@ class ApproveBill:
         b, vendor, line = await _approve_bill_inputs(s, actor, args, for_update=True)
         before = await budget.position(s, actor.workspace_id, line.id)
         await budget.post(s, actor.workspace_id, line.id, "committed", b.amount_paise, "bill_approved",
-                          source_type="bill", source_id=b.id, economic_event_id=b.economic_event_id, receipt_id=receipt_id)
+                          source_type="bill", source_id=b.id, economic_event_id=b.economic_event_id, receipt_id=receipt_id,
+                          fiscal_month=b.business_date)
         b.state, b.approver_id, b.version = "approved", actor.user_id, b.version + 1
         after = await budget.position(s, actor.workspace_id, line.id)
         await audit.record(s, actor, "bill.approved", record_type="bill", record_id=b.id, record_ref=b.ref,
@@ -657,3 +660,8 @@ class SendMessage:
 
 ACTIONS: dict[str, Action] = {a.kind: a for a in (SubmitClaim(), SubmitBill(), Approve(), Settle(), ApplyLeave(),
                                                   DecideLeave("reject"), OnboardEmployee(), SendMessage())}
+
+# Budget planning writes live in their own module; registered here so proposals see one ACTIONS table.
+from app.services.budget_actions import ALL as _BUDGET_ACTIONS  # noqa: E402
+
+ACTIONS.update({a.kind: a for a in _BUDGET_ACTIONS})
