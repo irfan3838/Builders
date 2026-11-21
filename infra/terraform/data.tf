@@ -154,3 +154,29 @@ resource "aws_secretsmanager_secret_version" "gmail_app_password" {
     ignore_changes = [secret_string]
   }
 }
+
+resource "aws_secretsmanager_secret" "google_client_secret" {
+  name                    = "${local.name}/google-client-secret"
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "google_client_secret" {
+  secret_id     = aws_secretsmanager_secret.google_client_secret.id
+  secret_string = "replace-me" # app treats this as "calendar not connected" until aws_put_secrets copies the real value
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}
+
+resource "aws_secretsmanager_secret" "google_refresh_token" {
+  name                    = "${local.name}/google-refresh-token"
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "google_refresh_token" {
+  secret_id     = aws_secretsmanager_secret.google_refresh_token.id
+  secret_string = "replace-me" # app treats this as "calendar not connected" until aws_put_secrets copies the real value
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}

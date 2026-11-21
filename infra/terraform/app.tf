@@ -2,10 +2,12 @@
 
 locals {
   secrets = {
-    DATABASE_URL       = aws_secretsmanager_secret.database_url.arn
-    SESSION_SECRET     = aws_secretsmanager_secret.session_secret.arn
-    OPENAI_API_KEY     = aws_secretsmanager_secret.openai_api_key.arn
-    GMAIL_APP_PASSWORD = aws_secretsmanager_secret.gmail_app_password.arn
+    DATABASE_URL         = aws_secretsmanager_secret.database_url.arn
+    SESSION_SECRET       = aws_secretsmanager_secret.session_secret.arn
+    OPENAI_API_KEY       = aws_secretsmanager_secret.openai_api_key.arn
+    GMAIL_APP_PASSWORD   = aws_secretsmanager_secret.gmail_app_password.arn
+    GOOGLE_CLIENT_SECRET = aws_secretsmanager_secret.google_client_secret.arn
+    GOOGLE_REFRESH_TOKEN = aws_secretsmanager_secret.google_refresh_token.arn
   }
   app_origin = "https://${aws_cloudfront_distribution.app.domain_name}"
   environment = merge({
@@ -31,7 +33,7 @@ data "aws_iam_policy_document" "ecs_assume" {
   }
 }
 
-# Execution role: pull the image, write logs, read exactly these four secrets.
+# Execution role: pull the image, write logs, read exactly these secrets.
 resource "aws_iam_role" "execution" {
   name               = "${local.name}-execution"
   assume_role_policy = data.aws_iam_policy_document.ecs_assume.json

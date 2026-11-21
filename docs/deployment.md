@@ -15,7 +15,9 @@ browser ──HTTPS──> CloudFront (*.cloudfront.net, default cert)
                      │ public IP for outbound (OpenAI, ECB/Frankfurter, Gmail SMTP, ECR); no NAT gateway
                      ├──> RDS Postgres 16 db.t4g.micro (not public; 5432 from the app security group only)
                      ├──> S3 private uploads bucket (SSE, 30-day expiry, gateway endpoint)
-                     └──> Secrets Manager: munshi/database-url, session-secret, openai-api-key, gmail-app-password
+                     ├──> Google Calendar API (OAuth refresh token): events with a Meet link; Google emails the invites
+                     └──> Secrets Manager: munshi/database-url, session-secret, openai-api-key, gmail-app-password,
+                          google-client-secret, google-refresh-token
 ```
 
 Why one task: live-update subscribers (`app/events.py`) are in process memory.
@@ -40,7 +42,7 @@ terraform -chdir=infra/terraform apply -var image_tag=$TAG
 uv run python -m scripts.aws_put_secrets
 
 # 4. schema + synthetic demo data, then restart the service so it picks up the secrets
-scripts/aws_run_task.sh seed-reset
+scripts/aws_run_task.sh seed-reset   # or seed-demo: same plus the larger synthetic demo dataset (seed/demo_data.py)
 aws ecs update-service --region us-west-2 --cluster munshi --service munshi --force-new-deployment
 
 # 5. smoke
@@ -54,6 +56,15 @@ TAG=$(git rev-parse --short HEAD); docker build -t "$REPO:$TAG" . && docker push
 scripts/aws_run_task.sh migrate                     # only when a migration was added (run with the NEW image: apply first)
 terraform -chdir=infra/terraform apply -var image_tag=$TAG
 ```
+
+## Email and Google Meet
+
+- `EMAIL_ALLOWED_RECIPIENTS` (tfvars `app_env`): a comma list of addresses, or `*` to email any address on file.
+- Google Calendar: one-time `uv run python -m scripts.google_oauth` (needs `.secrets/google_client.json`, a Desktop
+  OAuth client with the `calendar.events` scope) writes `GOOGLE_CLIENT_ID/SECRET/REFRESH_TOKEN` to `.env`.
+  `GOOGLE_CLIENT_ID` goes in tfvars `app_env`; `scripts.aws_put_secrets` copies the secret and refresh token.
+  Placeholder values (`replace-me`) mean "calendar not connected": meetings are recorded without a Meet link.
+- Keep the OAuth app **published** (not Testing), or the refresh token expires after 7 days.
 
 ## Rollback
 

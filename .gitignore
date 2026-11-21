@@ -67,3 +67,6 @@ spikes/voice_spike/evidence/
 
 # Terraform variable values (may hold personal emails)
 infra/terraform/terraform.tfvars
+
+# local OAuth client files (Google Calendar)
+.secrets/

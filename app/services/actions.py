@@ -23,7 +23,7 @@ from app.errors import (
     VALIDATION,
     DomainError,
 )
-from app.models import Bill, Claim, Party, Reservation, Settlement
+from app.models import Bill, Claim, Meeting, Party, Reservation, Settlement
 from app.money import format_inr
 from app.services import audit, budget, records
 
@@ -658,8 +658,102 @@ class SendMessage:
         return Execution(f"{kind.capitalize()} '{subject}' sent to {len(recipients)} ({detail}).", [{"type": "messages", **sent}])
 
 
+# ---------------------------------------------------------------- meetings (Google Calendar + Meet)
+
+_EMAIL_RE = __import__("re").compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+async def _meeting_inputs(s, actor, args):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from app.config import get_settings
+    from app.services import calendar, people
+    tz = get_settings().calendar_timezone
+    title = " ".join((args.get("title") or "").split())
+    if not title:
+        raise DomainError(VALIDATION, "A meeting title is required.")
+    if len(title) > 150:
+        raise DomainError(VALIDATION, "The title is too long (max 150 characters).")
+    kind = "interview" if args.get("kind") == "interview" else "meeting"
+    try:
+        start = datetime.fromisoformat(str(args["start"])).replace(tzinfo=ZoneInfo(tz), second=0, microsecond=0)
+    except (KeyError, ValueError) as e:
+        raise DomainError(VALIDATION, "Start time YYYY-MM-DDTHH:MM is required.") from e
+    if not calendar.is_future(start):
+        raise DomainError(VALIDATION, "That time has already passed. Pick a time in the future.")
+    try:
+        minutes = int(args.get("duration_minutes") or 30)
+    except (TypeError, ValueError) as e:
+        raise DomainError(VALIDATION, "Duration must be a number of minutes.") from e
+    if not 10 <= minutes <= 480:
+        raise DomainError(VALIDATION, "Duration must be between 10 minutes and 8 hours.")
+    users = [await people.user(s, actor, int(i)) for i in dict.fromkeys(args.get("user_ids") or [])]
+    guests = []
+    for e in args.get("guest_emails") or []:
+        e = (e or "").strip().lower()
+        if not _EMAIL_RE.match(e):
+            raise DomainError(VALIDATION, f"'{e}' is not a valid email address.")
+        guests.append(e)
+    if not users and not guests:
+        raise DomainError(VALIDATION, "Add at least one attendee (a colleague or an email address).")
+    invite = list(dict.fromkeys([*guests, *[u.notify_email.strip().lower() for u in users if u.notify_email]]))
+    if len(invite) > 25:
+        raise DomainError(VALIDATION, "Too many guests (max 25).")
+    description = (args.get("description") or "").strip()[:2000] or None
+    return title, kind, start, start + timedelta(minutes=minutes), minutes, tz, users, guests, invite, description
+
+
+class ScheduleMeeting:
+    kind = "schedule_meeting"
+
+    async def plan(self, s, actor, args):
+        from app.config import get_settings
+        from app.services import calendar
+        title, kind, start, end, minutes, tz, users, guests, invite, description = await _meeting_inputs(s, actor, args)
+        probe = Meeting(start_at=start, end_at=end, timezone=tz)
+        who = [u.display_name for u in users] + guests
+        lines = [f"{'Interview' if kind == 'interview' else 'Meeting'}: {title}",
+                 f"When: {calendar.when_text(probe)} ({minutes} min, {tz}).",
+                 "With: " + ", ".join(who) + "."]
+        if description:
+            lines.append(f"Notes: {description}")
+        if get_settings().calendar_enabled:
+            lines.append("Google Calendar event with a Google Meet link; Google emails the invite to "
+                         + (", ".join(invite) if invite else "no one (no email addresses on file)") + ".")
+            no_mail = [u.display_name for u in users if not u.notify_email]
+            if no_mail:
+                lines.append(f"No email on file for {', '.join(no_mail)}: they get the link in the Purser inbox only.")
+        else:
+            lines.append("Google Calendar is not connected: the meeting is recorded in Purser without a Meet link or invites.")
+        return Plan("Schedule interview" if kind == "interview" else "Schedule meeting", lines,
+                    f"Schedule '{title}' on {calendar.when_text(probe)} with {', '.join(who[:3])}"
+                    + (f" and {len(who) - 3} more" if len(who) > 3 else "") + "?", [])
+
+    async def execute(self, s, actor, args, receipt_id):
+        import uuid
+
+        from app.config import get_settings
+        title, kind, start, end, minutes, tz, users, guests, invite, description = await _meeting_inputs(s, actor, args)
+        enabled = get_settings().calendar_enabled
+        m = Meeting(workspace_id=actor.workspace_id, ref="pending", kind=kind, title=title, description=description,
+                    start_at=start, end_at=end, timezone=tz, organizer_id=actor.user_id, attendee_user_ids=[u.id for u in users],
+                    guest_emails=invite, google_event_id=uuid.uuid4().hex, status="queued" if enabled else "skipped",
+                    status_detail=None if enabled else "calendar_not_configured", receipt_id=receipt_id)
+        s.add(m)
+        await s.flush()
+        m.ref = f"MT{m.id}"
+        await audit.record(s, actor, f"{kind}.scheduled", record_type="meeting", record_id=m.id, record_ref=m.ref,
+                           after={"title": title, "start": start.isoformat(), "minutes": minutes, "guests": len(invite),
+                                  "attendees": len(users), "status": m.status}, receipt_id=receipt_id)
+        tail = "creating the Google Meet link and sending invites" if enabled else "recorded without a Meet link (calendar not connected)"
+        return Execution(f"{'Interview' if kind == 'interview' else 'Meeting'} {m.ref} '{title}' scheduled; {tail}.",
+                         [{"type": "meeting", "ref": m.ref, "status": m.status, "guests": len(invite)}])
+
+
 ACTIONS: dict[str, Action] = {a.kind: a for a in (SubmitClaim(), SubmitBill(), Approve(), Settle(), ApplyLeave(),
-                                                  DecideLeave("reject"), OnboardEmployee(), SendMessage())}
+                                                  DecideLeave("reject"), OnboardEmployee(), SendMessage(),
+                                                  ScheduleMeeting())}
 
 # Budget planning writes live in their own module; registered here so proposals see one ACTIONS table.
 from app.services.budget_actions import ALL as _BUDGET_ACTIONS  # noqa: E402

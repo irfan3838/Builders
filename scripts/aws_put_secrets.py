@@ -1,4 +1,4 @@
-"""Copy the two out-of-band secrets from the local .env into AWS Secrets Manager.
+"""Copy the out-of-band secrets from the local .env into AWS Secrets Manager.
 
 Values are read from .env and sent with boto3: never printed, never placed on a command line, never logged.
 Usage:  uv run python -m scripts.aws_put_secrets   (needs AWS credentials for the target account)
@@ -10,7 +10,8 @@ from pathlib import Path
 import boto3
 
 REGION = "us-west-2"
-MAP = {"OPENAI_API_KEY": "munshi/openai-api-key", "GMAIL_APP_PASSWORD": "munshi/gmail-app-password"}
+MAP = {"OPENAI_API_KEY": "munshi/openai-api-key", "GMAIL_APP_PASSWORD": "munshi/gmail-app-password",
+       "GOOGLE_CLIENT_SECRET": "munshi/google-client-secret", "GOOGLE_REFRESH_TOKEN": "munshi/google-refresh-token"}
 
 
 def main() -> None:

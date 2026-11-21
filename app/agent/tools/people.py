@@ -107,6 +107,20 @@ async def propose_message(ctx: Ctx, audience: Literal["person", "department", "a
 
 @function_tool
 @safe_tool
+async def propose_meeting(ctx: Ctx, title: str, start: str, duration_minutes: int = 30,
+                          kind: Literal["meeting", "interview"] = "meeting", user_ids: list[int] | None = None,
+                          guest_emails: list[str] | None = None, description: str | None = None) -> dict:
+    """Propose scheduling a meeting or interview as a Google Calendar event with a Google Meet link. start is local
+    time YYYY-MM-DDTHH:MM (resolve 'kal 3 baje', 'next Monday 11am' from today's date). Colleagues go in user_ids
+    (resolve with find_people); outside people such as candidates go in guest_emails exactly as the user spelled them.
+    After confirmation Google emails the invite with the Meet link."""
+    return await _propose(ctx, "schedule_meeting", {"title": title, "start": start, "duration_minutes": duration_minutes,
+                                                    "kind": kind, "user_ids": user_ids, "guest_emails": guest_emails,
+                                                    "description": description})
+
+
+@function_tool
+@safe_tool
 async def read_inbox(ctx: Ctx, unread_only: bool = True, limit: int = 5) -> dict:
     """The speaker's Purser inbox (announcements, leave decisions, messages), newest first. Marks returned items read."""
     a = ctx.context.actor
@@ -150,4 +164,4 @@ async def lookup_policy(ctx: Ctx, question: str) -> dict:
 
 
 TOOLS = [find_people, get_leave_balance, list_leave_requests, propose_leave, propose_leave_decision, propose_onboarding,
-         propose_message, read_inbox, get_onboarding_status, lookup_policy]
+         propose_message, propose_meeting, read_inbox, get_onboarding_status, lookup_policy]

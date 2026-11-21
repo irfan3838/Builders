@@ -38,10 +38,17 @@ class Settings(BaseSettings):
     gmail_address: str = ""
     gmail_app_password: str = ""
     email_allowed_recipients: str = ""
+    # Google Calendar (one organizer account, OAuth refresh token from scripts/google_oauth.py). Creates events with a
+    # Meet link; Google emails the invites. Unset (or the Terraform placeholder) = meetings are recorded without a link.
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_refresh_token: str = ""
+    calendar_timezone: str = "Asia/Kolkata"
     # Revenue FX: "ecb" fetches Frankfurter (ECB reference rates); "fixture" uses fixed quotes (tests, offline demo).
     fx_provider: str = "ecb"
 
-    @field_validator("gmail_address", "gmail_app_password", "email_allowed_recipients", mode="before")
+    @field_validator("gmail_address", "gmail_app_password", "email_allowed_recipients", "google_client_id",
+                     "google_client_secret", "google_refresh_token", mode="before")
     @classmethod
     def _strip(cls, v):
         return v.strip() if isinstance(v, str) else v
@@ -53,6 +60,11 @@ class Settings(BaseSettings):
     @property
     def email_enabled(self) -> bool:
         return bool(self.gmail_address and self.gmail_app_password)
+
+    @property
+    def calendar_enabled(self) -> bool:
+        vals = (self.google_client_id, self.google_client_secret, self.google_refresh_token)
+        return all(v and v != "replace-me" for v in vals)
 
     @property
     def agent_model(self) -> str:

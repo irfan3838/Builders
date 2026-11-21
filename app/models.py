@@ -592,6 +592,30 @@ class Message(Base, TimestampMixin):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class Meeting(Base, TimestampMixin):
+    """A calendar event with a Google Meet link. Queued inside the confirm transaction; created at Google after commit."""
+
+    __tablename__ = "meetings"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    ref: Mapped[str] = mapped_column(String(20), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # meeting | interview
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text)
+    start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    timezone: Mapped[str] = mapped_column(String(40))
+    organizer_id: Mapped[int] = mapped_column(BigInteger)
+    attendee_user_ids: Mapped[list] = mapped_column(JSONB, default=list)
+    guest_emails: Mapped[list] = mapped_column(JSONB, default=list)  # every address Google invites
+    google_event_id: Mapped[str] = mapped_column(String(64), unique=True)  # chosen by us -> idempotent create
+    status: Mapped[str] = mapped_column(String(20))  # queued | created | skipped | failed
+    status_detail: Mapped[str | None] = mapped_column(String(300))
+    meet_url: Mapped[str | None] = mapped_column(String(300))
+    event_url: Mapped[str | None] = mapped_column(String(500))
+    receipt_id: Mapped[int | None] = mapped_column(BigInteger)
+
+
 class OnboardingTask(Base, TimestampMixin):
     __tablename__ = "onboarding_tasks"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)

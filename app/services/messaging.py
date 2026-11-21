@@ -73,7 +73,13 @@ def _send_smtp(to: str, subject: str, body: str) -> str:
 
 
 async def dispatch(limit: int = 20) -> int:
-    """Send queued emails. Each row is claimed with SKIP LOCKED so concurrent dispatchers never double-send."""
+    """Send queued emails. Each row is claimed with SKIP LOCKED so concurrent dispatchers never double-send.
+    Queued Google Calendar meetings are created first (their own failures never block email)."""
+    from app.services import calendar
+    try:
+        await calendar.dispatch()
+    except Exception:
+        log.exception("calendar dispatch failed")
     sent = 0
     for _ in range(limit):
         async with db.session_scope() as s:

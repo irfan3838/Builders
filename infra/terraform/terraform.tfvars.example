@@ -5,4 +5,5 @@ app_env = {
   OPENAI_MODEL_VOICE       = "gpt-live-1.1"
   GMAIL_ADDRESS            = "sender@example.com"
   EMAIL_ALLOWED_RECIPIENTS = "you@example.com"
+  GOOGLE_CLIENT_ID         = "1234-abc.apps.googleusercontent.com"
 }
