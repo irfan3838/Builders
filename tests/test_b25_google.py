@@ -547,16 +547,16 @@ async def test_save_mail_draft_new_requires_to_and_subject(seeded, monkeypatch):
 async def test_list_meetings_demo_users_see_only_their_own(seeded):
     async with db.session_scope() as s:
         await seed_roles(s)
-    ceo = await actor_by_email("ceo@purser.demo")
-    emp = await actor_by_email("employee@purser.demo")
+    ceo = await actor_by_email("irfan@dzruptiv.ai")
+    emp = await actor_by_email("ia383813@gmail.com")
     today = today_ist().isoformat()
     tomorrow = (today_ist() + timedelta(days=1)).isoformat()
     t = tool("list_meetings")
     out, ctx = await call(t, ceo, on=today)
-    assert out["ok"] and out["source"] == "purser_demo"
+    assert out["ok"] and out["source"] == "purser"
     # the CEO organises two and is also an attendee of the employee's pipeline review
     assert sorted(m["title"] for m in out["meetings"]) == ["Board pre-read review", "Q3 sales pipeline review", "Weekly leadership sync"]
-    assert ctx.ui[0]["card"] == "meetings" and ctx.ui[0]["source"] == "purser_demo"
+    assert ctx.ui[0]["card"] == "meetings" and ctx.ui[0]["source"] == "purser"
     out, _ = await call(t, emp, on=today)
     assert sorted(m["title"] for m in out["meetings"]) == ["Q3 sales pipeline review", "Weekly leadership sync"]
     out, _ = await call(t, emp, on=tomorrow)

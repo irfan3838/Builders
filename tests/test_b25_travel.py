@@ -62,10 +62,11 @@ def test_resolve_view_shape():
     assert airports.resolve("Bombay") == {"iata": "BOM", "city": "Mumbai", "airport": "Chhatrapati Shivaji Maharaj International"}
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: resolve() substring-matches aliases inside the user's text: resolve('Goalpara') returns GOI (Goa) "
-                   "because alias 'goa' in 'goalpara'; an unknown city silently becomes another airport instead of 'ask the user'")
 def test_resolve_does_not_match_alias_inside_other_word():
     assert airports.resolve("Goalpara") is None
+    assert airports.resolve("north goa")["iata"] == "GOX"
+    assert airports.resolve("new delhi airport")["iata"] == "DEL"
+    assert airports.resolve("Bombay")["iata"] == "BOM"
 
 
 @pytest.mark.parametrize("lat,lon,iata", [(19.07, 72.87, "BOM"), (13.08, 80.27, "MAA"), (18.52, 73.85, "PNQ"), (12.97, 77.59, "BLR"),
@@ -154,7 +155,7 @@ async def test_serpapi_caps_options_at_15(monkeypatch):
 async def test_serpapi_error_falls_back_to_sample(monkeypatch, resp):
     serp(monkeypatch, lambda req: resp)
     r = await flights.search("DEL", "BOM", date(2026, 12, 1))
-    assert r["source"] == "sample" and "SAMPLE" in r["note"] and len(r["options"]) == 6
+    assert r["source"] == "sample" and "Estimated fares" in r["note"] and len(r["options"]) == 6
     assert all(o["from"] == "DEL" and o["to"] == "BOM" for o in r["options"])
 
 
@@ -163,7 +164,7 @@ async def test_serpapi_transport_error_falls_back(monkeypatch):
         raise httpx.ConnectError("down")
     serp(monkeypatch, boom)
     r = await flights.search("DEL", "BOM", date(2026, 12, 1))
-    assert r["source"] == "sample" and "SAMPLE" in r["note"]
+    assert r["source"] == "sample" and "Estimated fares" in r["note"]
 
 
 async def test_serpapi_empty_result_falls_back_with_note(monkeypatch):
@@ -174,7 +175,7 @@ async def test_serpapi_empty_result_falls_back_with_note(monkeypatch):
 
 async def test_no_key_is_sample_and_makes_no_request(monkeypatch):
     r = await flights.search("DEL", "BOM", date(2026, 12, 1))
-    assert r["source"] == "sample" and "not configured" in r["note"] and "SAMPLE" in r["note"]
+    assert r["source"] == "sample" and "Estimated fares" in r["note"] and r["search_url"].startswith("https://www.google.com/travel/flights")
 
 
 async def test_sample_shape_and_determinism():
@@ -327,7 +328,7 @@ async def test_search_resets_flight_clarify_count(seeded, monkeypatch):
 
 async def test_sample_source_is_reported_to_the_agent(seeded):
     out, ctx = await call(travel.search_flights, await make_actor(seeded), destination="BOM", origin="DEL", depart_date=day().isoformat())
-    assert out["ok"] and out["source"] == "sample" and "SAMPLE" in out["note"] and "sample fares" in out["say"]
+    assert out["ok"] and out["source"] == "sample" and "Estimated fares" in out["note"] and "estimated fares" in out["say"]
     assert ctx.ui[0]["source"] == "sample"
 
 
@@ -382,7 +383,7 @@ async def test_book_flight_confirm_creates_records(seeded, monkeypatch):
     assert b.details["cabin"] == "Economy"
     (trip,) = await one(Trip, Trip.purpose.contains(b.ref))
     assert b.trip_id == trip.id and trip.employee_party_id == a.party_id and b.ref in trip.purpose and trip.city == "Mumbai"
-    msgs = await one(Message, Message.kind == "flight")
+    msgs = await one(Message, Message.kind == "trip")
     inbox = [m for m in msgs if m.channel == "inbox"]
     assert len(inbox) == 1 and inbox[0].recipient_user_id == a.user_id and b.ref in inbox[0].subject and "Purser takes no payment" in inbox[0].body
     assert "complete payment" in inbox[0].subject
@@ -433,7 +434,7 @@ async def test_booking_for_linked_user_queues_two_google_ops(seeded, monkeypatch
     assert send.payload["to"] == [LINKED] and send.payload["sender"] == LINKED and b.ref in send.payload["subject"] and "Purser takes no payment" in send.payload["body"]
     assert create.payload["start"] < create.payload["end"] and b.ref in create.payload["description"] and "Payment on the airline site" in create.payload["description"]
     assert opts[0]["airline"] in create.payload["title"]
-    inbox = [m for m in await one(Message, Message.kind == "flight") if m.channel == "inbox"]
+    inbox = [m for m in await one(Message, Message.kind == "trip") if m.channel == "inbox"]
     assert len(inbox) == 1  # inbox copy only; the email goes through Gmail, not SMTP
 
 

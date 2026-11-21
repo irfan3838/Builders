@@ -28,7 +28,7 @@ async def login(response: Response, email: str, password: str) -> dict:
     async with db.session_scope() as s:
         u = (await s.execute(select(User).where(User.email == email.strip().lower()))).scalars().first()
         try:
-            if u is None:
+            if u is None or u.status == "disabled":  # disabled logins cannot sign in (same message: no account probing)
                 raise VerifyMismatchError
             _ph.verify(u.password_hash, password)
         except VerifyMismatchError:
@@ -62,7 +62,7 @@ def check_write(request: Request, sess: dict) -> None:
 async def _actor(request: Request, sess: dict) -> Actor:
     async with db.session_scope() as s:
         u = await s.get(User, sess["uid"])
-        if u is None:
+        if u is None or u.status == "disabled":  # a disabled login is signed out on its next request
             raise HTTPException(401, "Unknown user")
         conv_id = request.headers.get("x-conversation-id") or (
             request.query_params.get("conversation_id") if request.method == "GET" else None)

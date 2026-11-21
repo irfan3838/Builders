@@ -261,7 +261,7 @@ async def test_instructions_role_note(seeded):
     ceo_txt = _instructions(_ctx(r["ceo"]), None)
     emp_txt = _instructions(_ctx(r["employee"]), None)
     assert "READ-ONLY" in ceo_txt and "NOT visible" in emp_txt
-    assert "Purser demo meetings" in emp_txt
+    assert "Purser calendar" in emp_txt
 
 
 # ------------------------------------------------------------------ uses_google
@@ -306,11 +306,11 @@ async def test_schedule_meeting_non_linked_user_skipped(seeded, monkeypatch):
     emp = r["employee"]
     async with db.session_scope() as s:
         plan = await actions.ACTIONS["schedule_meeting"].plan(s, emp, margs())
-    assert any("Purser meeting (demo)" in ln for ln in plan.lines) and not any("Google Meet link;" in ln for ln in plan.lines)
+    assert any("Purser calendar" in ln for ln in plan.lines) and not any("Google Meet link;" in ln for ln in plan.lines)
     from unittest.mock import patch
     with patch("app.services.messaging.dispatch_soon", lambda: None):
         _, out = await propose_and_confirm(emp, "schedule_meeting", margs())
-    assert out.status == "executed" and "demo meeting" in out.receipt.summary if hasattr(out.receipt, "summary") else True
+    assert out.status == "executed" and "saved in the Purser calendar" in out.receipt.summary if hasattr(out.receipt, "summary") else True
     async with db.session_scope() as s:
         ms = list((await s.execute(select(Meeting))).scalars())
     assert [m.status for m in ms] == ["skipped"]
@@ -345,8 +345,8 @@ async def with_roles(seeded):
 
 
 async def test_http_finance_endpoints_matrix(with_roles):
-    emp = await client_for("employee@purser.demo")
-    ceo = await client_for("ceo@purser.demo")
+    emp = await client_for("ia383813@gmail.com")
+    ceo = await client_for("irfan@dzruptiv.ai")
     adm = await client_for("priya@purser.demo")
     lines = (await adm.get("/api/budget/lines")).json()["lines"]
     lid = lines[0]["line_id"]
@@ -357,23 +357,23 @@ async def test_http_finance_endpoints_matrix(with_roles):
 
 
 async def test_http_priorities_budget_alerts_zero_for_employee(with_roles):
-    emp = await client_for("employee@purser.demo")
-    ceo = await client_for("ceo@purser.demo")
+    emp = await client_for("ia383813@gmail.com")
+    ceo = await client_for("irfan@dzruptiv.ai")
     r = await emp.get("/api/priorities")
     assert r.status_code == 200 and r.json()["budget_alerts"] == 0
     assert (await ceo.get("/api/priorities")).status_code == 200
 
 
 async def test_http_ceo_prepare_approval_forbidden(with_roles):
-    ceo = await client_for("ceo@purser.demo")
+    ceo = await client_for("irfan@dzruptiv.ai")
     r = await ceo.post("/api/records/CL-0001/prepare-approval")
     assert r.status_code in (403, 409, 400) and r.status_code != 201, r.text
     assert r.status_code == 403, f"CEO prepare-approval should be FORBIDDEN, got {r.status_code} {r.text}"
 
 
 async def test_http_ceo_reads_company_lists(with_roles):
-    ceo = await client_for("ceo@purser.demo")
-    emp = await client_for("employee@purser.demo")
+    ceo = await client_for("irfan@dzruptiv.ai")
+    emp = await client_for("ia383813@gmail.com")
     for path in ("/api/claims", "/api/bills", "/api/payments", "/api/trips", "/api/documents"):
         assert (await ceo.get(path)).status_code == 200, path
     assert (await emp.get("/api/bills")).status_code == 403
@@ -384,7 +384,7 @@ async def test_http_ceo_reads_company_lists(with_roles):
 
 
 async def test_http_login_carries_email_to_actor(with_roles):
-    ceo = await client_for("ceo@purser.demo")
+    ceo = await client_for("irfan@dzruptiv.ai")
     assert (await ceo.get("/api/me")).status_code in (200, 404)
 
 
@@ -403,7 +403,7 @@ async def test_seed_roles_idempotent(seeded):
         after_m = (await s.execute(select(func.count()).select_from(Meeting))).scalar_one()
         users = {u.email: u.role for u in (await s.execute(select(User))).scalars()}
         statuses = {m.status for m in (await s.execute(select(Meeting))).scalars()}
-    assert first["demo_meetings_added"] == 5 and second["demo_meetings_added"] == 0
+    assert first["meetings_added"] == 5 and second["meetings_added"] == 0
     assert (before_u, before_m) == (after_u, after_m)
-    assert users["ceo@purser.demo"] == "ceo" and users["employee@purser.demo"] == "employee" and users["irfmed38@gmail.com"] == "admin"
-    assert first["users"] == second["users"] and statuses == {"demo"}
+    assert users["irfan@dzruptiv.ai"] == "ceo" and users["ia383813@gmail.com"] == "employee" and users["irfmed38@gmail.com"] == "admin"
+    assert first["users"] == second["users"] and statuses == {"saved"}

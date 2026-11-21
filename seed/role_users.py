@@ -144,8 +144,14 @@ async def seed_roles(s) -> dict:
         s.add(msg)
         await s.flush()
         msg.ref = f"M{msg.id}"
+    for email in DISABLED_LOGINS:
+        await s.execute(text("UPDATE users SET status = 'disabled' WHERE email = :e"), {"e": email})
     cleaned = await clean_labels(s)
     return {"users": made, "meetings_added": n, "tasks_added": t_added, "labels_cleaned": cleaned}
+
+
+# Old logins that must not sign in any more (their records stay: claims, approvals, history).
+DISABLED_LOGINS = ("irfan@purser.demo",)
 
 
 # Display text only: strip test labels so the product never shows them. Idempotent; emails and ids are untouched.

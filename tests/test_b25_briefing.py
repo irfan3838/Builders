@@ -61,7 +61,7 @@ async def add_meeting(actor_org, title, att_ids, hh=12, ref="MTX1", day=None):
     async with db.session_scope() as s:
         s.add(Meeting(workspace_id=actor_org.workspace_id, ref=ref, kind="meeting", title=title, start_at=start, end_at=start + timedelta(minutes=30),
                       timezone="Asia/Kolkata", organizer_id=actor_org.user_id, attendee_user_ids=att_ids, guest_emails=[],
-                      google_event_id=f"ev-{ref}-{title}"[:60], status="demo"))
+                      google_event_id=f"ev-{ref}-{title}"[:60], status="saved"))
 
 
 # ------------------------------------------------------------------ role sections
@@ -144,7 +144,7 @@ async def test_today_lists_organizer_and_attendee_meetings_only(seeded):
     await add_meeting(arjun, "Arjun own", [], 14, "MTC")
     b = await briefing.build(arjun, fresh=True)
     today = sec(b, "Today")
-    assert today["source"] == "purser_demo"
+    assert today["source"] == "purser"
     assert [i["title"] for i in today["items"]] == ["Priya with Arjun", "Arjun own"]
     assert b["sections"][1] is today
     b2 = await briefing.build(priya, fresh=True)
@@ -163,7 +163,7 @@ async def test_agenda_other_day_excluded(seeded):
     assert sec(b, "Today")["items"] == []
     start = datetime.combine(today_ist() + timedelta(days=1), time.min, tzinfo=IST)
     ev, src = await agenda.meetings(arjun, start, start + timedelta(days=1))
-    assert [e["title"] for e in ev] == ["Tomorrow thing"] and src == "purser_demo"
+    assert [e["title"] for e in ev] == ["Tomorrow thing"] and src == "purser"
     assert ev[0]["organizer"] == arjun.display_name and ev[0]["all_day"] is False
 
 

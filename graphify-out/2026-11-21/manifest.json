@@ -102,9 +102,9 @@
     "semantic_hash": ""
   },
   "app/config.py": {
-    "mtime": 1795268664.011363,
-    "seen": 1795269978.5112274,
-    "ast_hash": "bc6c0edfdf29f4f63f2c57fa13ca3663",
+    "mtime": 1795270436.5878274,
+    "seen": 1795270693.0331662,
+    "ast_hash": "22b76860368e8e23f1e96e9832b7bacc",
     "semantic_hash": ""
   },
   "app/db.py": {
@@ -150,9 +150,9 @@
     "semantic_hash": ""
   },
   "app/services/actions.py": {
-    "mtime": 1795268715.5537992,
-    "seen": 1795269978.5117388,
-    "ast_hash": "f9fbd4dfbc0f5fdfa525da4832bfb916",
+    "mtime": 1795270421.8654125,
+    "seen": 1795270693.0331924,
+    "ast_hash": "4581a5503cdc6d8d1df17d43bf81ca22",
     "semantic_hash": ""
   },
   "app/services/affirmation.py": {
@@ -210,9 +210,9 @@
     "semantic_hash": ""
   },
   "app/voice/live_bridge.py": {
-    "mtime": 1795263601.4005256,
-    "seen": 1795265252.8765197,
-    "ast_hash": "1e6ed94a17f92b554a2e02fe1f2da438",
+    "mtime": 1795270581.1348388,
+    "seen": 1795270693.033347,
+    "ast_hash": "fa2e73b18d96cacfe2f02c0aae16b749",
     "semantic_hash": ""
   },
   "migrations/env.py": {
@@ -432,15 +432,15 @@
     "semantic_hash": ""
   },
   "app/agent/tools/people.py": {
-    "mtime": 1795268715.555478,
-    "seen": 1795269978.5107548,
-    "ast_hash": "3e34290cb29dd1ded627e01cb7b5bf1a",
+    "mtime": 1795270421.8674126,
+    "seen": 1795270693.0331354,
+    "ast_hash": "3579af3c28aa0beec726b42b0916aae5",
     "semantic_hash": ""
   },
   "app/services/messaging.py": {
-    "mtime": 1795268715.5550427,
-    "seen": 1795269978.5135517,
-    "ast_hash": "dceb9c0cd1b165c475171d555c60ba8b",
+    "mtime": 1795270421.863269,
+    "seen": 1795270693.0332794,
+    "ast_hash": "d88504becdd2f8a73af9aabaae667782",
     "semantic_hash": ""
   },
   "app/services/people.py": {
@@ -696,9 +696,9 @@
     "semantic_hash": ""
   },
   "app/agent/purser.py": {
-    "mtime": 1795263601.3729525,
-    "seen": 1795265252.875165,
-    "ast_hash": "0f40b7af374afebbb472c9007d61d020",
+    "mtime": 1795270380.067426,
+    "seen": 1795270693.0330977,
+    "ast_hash": "fc43e65e398626733334210a52a2b32f",
     "semantic_hash": ""
   },
   "app/agent/tools/contracts.py": {
@@ -864,9 +864,9 @@
     "semantic_hash": ""
   },
   "web/src/components/assistant/PurserComposer.tsx": {
-    "mtime": 1795262853.60182,
-    "seen": 1795265252.8771665,
-    "ast_hash": "b3be5bfa503b55111bc639b48f4d9e99",
+    "mtime": 1795270469.0824034,
+    "seen": 1795270693.033539,
+    "ast_hash": "b27ec495b16a427b4dd378513685e35e",
     "semantic_hash": ""
   },
   "web/src/components/assistant/PurserOrb.tsx": {
@@ -876,9 +876,9 @@
     "semantic_hash": ""
   },
   "web/src/components/assistant/PurserVoiceController.tsx": {
-    "mtime": 1795262828.6154032,
-    "seen": 1795265252.8771708,
-    "ast_hash": "b6287ac918c9db48ea12e4a50c943c08",
+    "mtime": 1795270506.2475903,
+    "seen": 1795270693.0335455,
+    "ast_hash": "5a384c8376001ca3c021adb9a7859017",
     "semantic_hash": ""
   },
   "web/src/components/finance/FinancialDecisionStrip.tsx": {
@@ -930,15 +930,15 @@
     "semantic_hash": ""
   },
   "web/src/services/wakeWord.ts": {
-    "mtime": 1795262791.4973838,
-    "seen": 1795265252.8771892,
-    "ast_hash": "d6060a713a8efa85f99fae250f22b5c8",
+    "mtime": 1795270498.1393824,
+    "seen": 1795270693.0335774,
+    "ast_hash": "555e3893b4c496affdb7e2287e68f6c5",
     "semantic_hash": ""
   },
   "web/src/state/store.tsx": {
-    "mtime": 1795263395.185579,
-    "seen": 1795265252.8771908,
-    "ast_hash": "bc1117bcb43cb8ab48e76bf89365eaef",
+    "mtime": 1795270469.0814095,
+    "seen": 1795270693.0335805,
+    "ast_hash": "f8bba9681d03f1aa24334ec4d980bd2b",
     "semantic_hash": ""
   },
   "web/src/views/MailView.tsx": {
@@ -954,15 +954,15 @@
     "semantic_hash": ""
   },
   "web/src/views/WorkspaceView.tsx": {
-    "mtime": 1795263072.0420926,
-    "seen": 1795265252.8771966,
-    "ast_hash": "efde59b4509135512d45d1552fa7453e",
+    "mtime": 1795270475.751122,
+    "seen": 1795270693.0335908,
+    "ast_hash": "95a94941d744c1e3c723e893377c7d48",
     "semantic_hash": ""
   },
   "app/agent/prompts/purser.md": {
-    "mtime": 1795268715.5558736,
-    "seen": 1795269978.5175009,
-    "ast_hash": "5b6af6ec94d604ac36049f08e49824ab",
+    "mtime": 1795270421.869335,
+    "seen": 1795270693.0336106,
+    "ast_hash": "4bf037a79f9862bdd67faee5372dde28",
     "semantic_hash": ""
   },
   "docs/GEMINI_UI_BRIEF.md": {
@@ -972,9 +972,9 @@
     "semantic_hash": ""
   },
   "docs/deployment.md": {
-    "mtime": 1795268795.1678927,
-    "seen": 1795269978.517929,
-    "ast_hash": "ca27593fffcc4a7d3806ff8f04a7d840",
+    "mtime": 1795270440.6317163,
+    "seen": 1795270693.0336478,
+    "ast_hash": "9b22da11e01ed068f99226ff7ec58de8",
     "semantic_hash": ""
   },
   "evals/contracts/live_demo_northwind_msa_scanned_synthetic.pdf": {
@@ -1020,21 +1020,21 @@
     "semantic_hash": ""
   },
   "infra/terraform/app.tf": {
-    "mtime": 1795254326.8313735,
-    "seen": 1795265258.6892314,
-    "ast_hash": "",
+    "mtime": 1795268775.681766,
+    "seen": 1795270693.0333548,
+    "ast_hash": "f2e4d43f9113d22590288899d47015eb",
     "semantic_hash": ""
   },
   "infra/terraform/data.tf": {
-    "mtime": 1795254269.1792107,
-    "seen": 1795265258.6892376,
-    "ast_hash": "",
+    "mtime": 1795268775.5828292,
+    "seen": 1795270693.0333583,
+    "ast_hash": "7025ba92f0dc62980b75333d444c4bac",
     "semantic_hash": ""
   },
   "infra/terraform/main.tf": {
     "mtime": 1795254267.7802067,
-    "seen": 1795265258.6892397,
-    "ast_hash": "",
+    "seen": 1795270693.0333614,
+    "ast_hash": "2f641c7692a5bcf9f2036d827024bb1a",
     "semantic_hash": ""
   },
   "seed/demo_data.py": {
@@ -1077,6 +1077,18 @@
     "mtime": 1795268891.1316571,
     "seen": 1795269978.5157137,
     "ast_hash": "047c450dc664a86a323f9e764c53e5f9",
+    "semantic_hash": ""
+  },
+  "app/agent/tools/suggestions.py": {
+    "mtime": 1795270379.493426,
+    "seen": 1795270693.0331497,
+    "ast_hash": "341b354b26bcf6f94478b2798bd1f74a",
+    "semantic_hash": ""
+  },
+  "tests/test_suggest_email_voice.py": {
+    "mtime": 1795270634.9679012,
+    "seen": 1795270693.0334911,
+    "ast_hash": "cbadb683f53dce2fb6e6ed24a6fea668",
     "semantic_hash": ""
   }
 }

@@ -85,7 +85,7 @@ class User(Base, TimestampMixin):
     designation: Mapped[str | None] = mapped_column(String(80))
     reports_to_id: Mapped[int | None] = mapped_column(BigInteger)
     start_date: Mapped[date | None] = mapped_column(Date)
-    status: Mapped[str] = mapped_column(String(20), default="active")  # active | invited
+    status: Mapped[str] = mapped_column(String(20), default="active")  # active | invited | disabled
     notify_email: Mapped[str | None] = mapped_column(String(200))  # real inbox for demo email (allow-listed)
     # last browser location the user shared (flight origin); never sent anywhere else
     last_lat: Mapped[float | None] = mapped_column(Float)

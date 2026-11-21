@@ -72,8 +72,9 @@ def resolve(text: str) -> dict | None:
     for a in AIRPORTS:
         if n == _norm(a[1]) or n in a[5]:
             return view(a)
-    for a in AIRPORTS:  # partial: "north goa", "new delhi airport"
-        if any(alias in n for alias in a[5]) or _norm(a[1]) in n:
+    words = f" {n} "
+    for a in AIRPORTS:  # whole words only: "north goa", "new delhi airport" match; "goalpara" does not match goa
+        if any(f" {alias} " in words for alias in a[5]) or f" {_norm(a[1])} " in words:
             return view(a)
     return None
 

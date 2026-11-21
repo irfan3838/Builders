@@ -117,8 +117,9 @@ async def test_hotels_search_url_falls_back_to_google_hotels_when_metadata_missi
 async def test_hotels_failures_fall_back_to_sample(monkeypatch, resp):
     serp(monkeypatch, lambda req: resp)
     r = await hotels.search("Pune", day(5), day(7))
-    assert r["note"] and ("SAMPLE" in r["note"] or "No hotels" in r["note"])
-    assert r["source"] == "sample" and len(r["options"]) == 6 and all("(sample)" in o["name"] for o in r["options"])
+    assert r["note"] in ("Estimated rates: live hotel prices are unavailable right now. The hotel site shows the final price.",
+                         "No hotels found for those dates by the live search.")
+    assert r["source"] == "sample" and len(r["options"]) == 6 and all(o["name"].startswith("Pune ") and "(sample)" not in o["name"] for o in r["options"])
     assert r["search_url"].startswith("https://www.google.com/travel/hotels") and r["nights"] == 2
 
 
@@ -127,12 +128,12 @@ async def test_hotels_transport_error_falls_back(monkeypatch):
         raise httpx.ConnectError("down")
     serp(monkeypatch, boom)
     r = await hotels.search("Pune", day(5), day(6))
-    assert r["source"] == "sample" and "unavailable" in r["note"]
+    assert r["source"] == "sample" and r["note"] == "Estimated rates: live hotel prices are unavailable right now. The hotel site shows the final price."
 
 
 async def test_hotels_no_key_is_sample_and_makes_no_request():
     r = await hotels.search("Goa", day(5), day(8))  # isolate() forbids any real client
-    assert r["source"] == "sample" and "not configured" in r["note"] and r["nights"] == 3
+    assert r["source"] == "sample" and r["note"] == "Estimated rates: live hotel prices are unavailable right now. The hotel site shows the final price." and r["nights"] == 3
     assert all(o["total_inr"] == o["price_per_night_inr"] * 3 and o["link"] is None for o in r["options"])
 
 
@@ -521,7 +522,8 @@ async def test_plan_lines_self_booking(seeded, monkeypatch):
     hsid, _ = await seed_hotel(a)
     async with db.session_scope() as s:
         plan = await booking.BookTrip().plan(s, a, {"flight_search_id": fsid, "flight_option_id": 1, "hotel_search_id": hsid, "hotel_option_id": 1})
-    assert plan.title == "Book trip" and any("SAMPLE fare" in l for l in plan.lines) and any("Trip total" in l for l in plan.lines)
+    assert plan.title == "Book trip" and any("(estimated fare)" in l for l in plan.lines)
+    assert any("Trip total" in l for l in plan.lines)
     assert not any(l.startswith("Traveller:") for l in plan.lines)
     assert any("Purser takes no payment" in l for l in plan.lines) and any("hotel's website" in l for l in plan.lines)
     assert "Taj Test" in plan.speak and "?" in plan.speak
