@@ -30,7 +30,7 @@ def email_plan(user: User) -> tuple[str | None, str]:
         return None, "no_email"
     if not st.email_enabled:
         return target, "email_not_configured"
-    if target not in st.email_allowlist:
+    if "*" not in st.email_allowlist and target not in st.email_allowlist:  # "*" = send to any address
         return target, "not_on_allowlist"
     return target, "deliverable"
 

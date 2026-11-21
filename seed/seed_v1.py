@@ -72,7 +72,8 @@ async def seed(s: AsyncSession, *, workspace_name: str = "Purser Demo Traders Pv
     await s.flush()
 
     # Demo email recipients come only from the allow-list (first -> Arjun, second -> Neha); never invented addresses.
-    allow = [e.strip() for e in os.getenv("EMAIL_ALLOWED_RECIPIENTS", "").split(",") if e.strip()] if email_domain == "purser.demo" else []
+    # The "*" wildcard (email anyone) is not an address, so it is skipped here.
+    allow = [e.strip() for e in os.getenv("EMAIL_ALLOWED_RECIPIENTS", "").split(",") if "@" in e] if email_domain == "purser.demo" else []
     priya = User(workspace_id=W, email=f"{admin_name.split()[0].lower()}@{email_domain}", display_name=admin_name, role="admin",
                  password_hash=ph.hash(password), party_id=priya_p.id, preferred_language="hinglish",
                  department="Finance", designation="Finance & HR Manager", start_date=date(2023, 6, 1))
