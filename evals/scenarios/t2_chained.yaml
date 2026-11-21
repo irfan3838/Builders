@@ -1,0 +1,145 @@
+# Tier 2: small actions chaining into bigger tasks (4-8 turns). Measures context growth turn by turn.
+
+- id: t2_briefing_to_payment_to_reminder
+  tier: 2
+  who: priya
+  turns:
+    - say: "good morning, brief me"
+      expect: {tools_any: [get_briefing, get_attention_items]}
+    - say: "kya pending hai revenue mein"
+      expect: {tools_any: [get_revenue_suggestions, get_attention_items, list_client_invoices]}
+    - say: "Acme Traders ka November wala 38 hazaar aa gaya"
+      expect: {tools_any: [propose_payment], cards_any: [proposal], writes: 0}
+    - say: "haan"
+      expect: {tools_any: [confirm_pending_proposal], writes: 1, db: {invoice_payments: 1}}
+    - say: "aur October wale ke liye Friday ko reminder daal do"
+      expect: {tools_any: [add_reminder], db: {reminders: 1}, reply_any: ["Friday", "27"]}
+
+- id: t2_part_payment_then_move_balance
+  tier: 2
+  who: priya
+  turns:
+    - say: "Northwind se 40 hazaar aur aaye hai October ke, baaki baad mein aayega"
+      expect: {tools_any: [propose_payment], writes: 0}
+    - say: "yes confirm"
+      expect: {tools_any: [confirm_pending_proposal], writes: 1, db: {invoice_payments: 1}}
+    - say: "baaki amount December ke invoice mein daal do"
+      expect: {tools_any: [propose_balance_move], writes: 0}
+    - say: "theek hai"
+      expect: {tools_any: [confirm_pending_proposal], writes: 1}
+
+- id: t2_lotus_balance_and_reminder_done
+  tier: 2
+  who: priya
+  turns:
+    - say: "Lotus Hospitality ka baaki 27,200 aa gaya"
+      expect: {tools_any: [propose_payment], writes: 0, reply_any: ["27,200"]}
+    - say: "haan kar do"
+      expect: {tools_any: [confirm_pending_proposal], writes: 1, db: {invoice_payments: 1}}
+    - say: "Lotus wala reminder bhi complete kar do"
+      expect: {tools_any: [complete_reminder]}
+
+- id: t2_leave_request_flow
+  tier: 2
+  who: arjun
+  turns:
+    - say: "mujhe next monday aur tuesday casual leave chahiye"
+      expect: {tools_any: [propose_leave], writes: 0, reply_any: ["23", "24", "Monday"]}
+    - say: "haan"
+      expect: {tools_any: [confirm_pending_proposal], writes: 1, db: {leave_requests: 1}}
+    - say: "meri leave ka status kya hai"
+      expect: {tools_any: [list_leave_requests]}
+
+- id: t2_manager_approves_leave
+  tier: 2
+  who: priya
+  turns:
+    - say: "Neha ki leave request dikhao"
+      expect: {tools_any: [list_leave_requests], reply_any: ["26", "27", "Neha"]}
+    - say: "approve kar do"
+      expect: {tools_any: [propose_leave_decision], writes: 0}
+    - say: "yes"
+      expect: {tools_any: [confirm_pending_proposal], writes: 1}
+
+- id: t2_chart_refine
+  tier: 2
+  who: priya
+  turns:
+    - say: "show me a graph of expenses"
+      expect: {cards_any: [choice, chart]}
+    - say: "spend by category"
+      expect: {cards_any: [choice, chart]}
+    - say: "this quarter"
+      expect: {cards_any: [chart, choice]}
+    - say: "sirf Marketing aur Travel dikhao"
+      expect: {tools_any: [revise_chart, build_chart], cards_any: [chart]}
+    - say: "compare with last quarter"
+      expect: {tools_any: [revise_chart, build_chart], cards_any: [chart]}
+
+- id: t2_trip_flight_and_hotel
+  tier: 2
+  who: arjun
+  turns:
+    - say: "next week Pune se Mumbai jaana hai client meeting ke liye"
+      expect: {cards_any: [choice, flight_options], writes: 0}
+    - say: "monday 30th"
+      expect: {tools_any: [search_flights], cards_any: [flight_options]}
+    - say: "hotel bhi chahiye 30 se 2 tak"
+      expect: {tools_any: [search_hotels], cards_any: [hotel_options]}
+    - say: "dono mein sabse sasta wala book karo"
+      expect: {tools_any: [propose_trip_booking], cards_any: [proposal], writes: 0}
+    - say: "haan approve"
+      expect: {tools_any: [confirm_pending_proposal], writes: 1, db: {flight_bookings: 1, hotel_bookings: 1}}
+
+- id: t2_meeting_with_correction
+  tier: 2
+  who: employee
+  turns:
+    - say: "schedule a 30 minute meeting with Arjun on monday at 11 about the Nimbus renewal"
+      expect: {tools_any: [propose_meeting, find_people], writes: 0}
+    - say: "actually make it 4 pm"
+      expect: {tools_any: [propose_meeting], writes: 0, reply_any: ["4", "16:00"]}
+    - say: "haan bhej do"
+      expect: {tools_any: [confirm_pending_proposal], writes: 1, db: {meetings: 1}}
+
+- id: t2_team_announcement
+  tier: 2
+  who: priya
+  turns:
+    - say: "Sales team ko message bhejo ki offsite 5 December ko hai, Lonavala mein"
+      expect: {tools_any: [propose_message], writes: 0, reply_any: ["Lonavala"]}
+    - say: "send it"
+      expect: {tools_any: [confirm_pending_proposal], writes: 1}
+
+- id: t2_budget_transfer
+  tier: 2
+  who: priya
+  turns:
+    - say: "is mahine Events se 3000 Travel mein shift kar do, client visits ke liye"
+      expect: {tools_any: [propose_budget_change], writes: 0, reply_any: ["3,000"]}
+    - say: "haan"
+      expect: {tools_any: [confirm_pending_proposal], writes: 1}
+    - say: "ab travel mein kitna bacha hai"
+      expect: {tools_any: [get_budget_month, get_budget_status], reply_any: ["₹"]}
+
+- id: t2_tasks_chain
+  tier: 2
+  who: employee
+  turns:
+    - say: "my tasks"
+      expect: {tools_any: [list_tasks], reply_any: ["Nimbus", "cab", "pipeline"]}
+    - say: "cab receipts wala done ho gaya"
+      expect: {tools_any: [complete_task]}
+    - say: "aur ek task add karo, Wednesday tak pipeline sheet update karna"
+      expect: {tools_any: [add_task], db: {tasks: 1}}
+
+- id: t2_ceo_briefing
+  tier: 2
+  who: ceo
+  turns:
+    - say: "brief me"
+      expect: {tools_any: [get_briefing, get_attention_items]}
+    - say: "how is revenue this quarter compared to last"
+      expect: {tools_any: [build_chart, get_revenue_overview]}
+    - say: "which contracts carry the most risk for us"
+      expect: {tools_any: [list_liabilities, search_contracts]}

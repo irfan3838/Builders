@@ -458,6 +458,42 @@ class Conversation(Base, TimestampMixin):
     last_snapshot_id: Mapped[str | None] = mapped_column(String(40))
     # MCQ clarifications asked so far, per topic ({"chart": 2}); capped so Purser always gets to an answer
     clarify_counts: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    # Workflow engine state (PURSER_WORKFLOWS=1): the active workflow, a compact memory of recent exchanges and
+    # workflow summaries. Replaces replaying the full tool history every turn.
+    workflow_state: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    workflow_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+
+class Escalation(Base, TimestampMixin):
+    """A turn the workflows could not handle, solved by the stronger model. The backlog for new workflow specs."""
+
+    __tablename__ = "escalations"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    conversation_id: Mapped[str] = mapped_column(String(40), index=True)
+    workflow: Mapped[str | None] = mapped_column(String(60))
+    trigger: Mapped[str] = mapped_column(String(200))
+    utterance: Mapped[str] = mapped_column(Text)
+    brief: Mapped[str] = mapped_column(Text)
+    tools_used: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    reply: Mapped[str | None] = mapped_column(Text)
+
+
+class CustomWorkflow(Base, TimestampMixin):
+    """A routine a user described in their own words, compiled into the same shape as a built-in workflow spec.
+    Private to its owner unless an admin shared it with the workspace. The tool allowlist is frozen at save time."""
+
+    __tablename__ = "custom_workflows"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    owner_user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    shared: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    title: Mapped[str] = mapped_column(String(80))
+    when: Mapped[str] = mapped_column(String(240))
+    examples: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    tools: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    checklist: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    source_prompt: Mapped[str] = mapped_column(Text)  # audit only: never sent to the runtime model
 
 
 class VoiceTurn(Base, TimestampMixin):

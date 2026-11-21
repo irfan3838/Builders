@@ -28,6 +28,10 @@ _AFFIRM_PHRASES = sorted(
         "haan", "han", "haa", "ha", "haanji", "haan ji", "ji haan", "ji ha", "ji", "theek hai", "thik hai",
         "theek he", "thik he", "kar do", "kardo", "kar dijiye", "kar dijie", "bilkul", "sahi hai", "chalo",
         "haan kar do", "haan theek hai", "ho jaye", "ho jaaye",
+        # Hinglish forms of the English action confirmations above ("send it", "submit it", "book it", "approve it")
+        "bhej do", "bhejo", "submit karo", "submit kar do", "book karo", "book kar do", "approve karo",
+        "approve kar do", "record karo", "record kar do", "schedule karo", "schedule kar do", "confirm karo",
+        "confirm kar do",
         # Devanagari
         "हाँ", "हां", "हा", "जी", "जी हाँ", "जी हां", "हाँ जी", "हां जी", "ठीक है", "कर दो", "कर दीजिए",
         "बिल्कुल", "सही है", "हाँ कर दो", "हां कर दो",

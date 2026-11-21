@@ -95,7 +95,7 @@ async def test_employee_sections_have_no_finance(seeded):
     b = await briefing.build(await make_actor(seeded, "arjun"), fresh=True)
     assert set(kpi_labels(b)) == {"Open tasks", "Leave available", "Claims in progress", "Unread inbox"}
     titles = [s.get("title") for s in b["sections"]]
-    assert titles == [None, "Today", "My tasks", "My requests"]
+    assert titles == [None, "Today", "My tasks", "My requests", "Your routines"]  # routines section added by custom workflows
     assert not (set(kpi_labels(b)) & FINANCE_LABELS)
     assert sec(b, "Priorities") is None and sec(b, "Risks to watch") is None
     blob = str(b)

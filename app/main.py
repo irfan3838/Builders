@@ -60,6 +60,9 @@ app = FastAPI(title="Purser", docs_url=None, redoc_url=None, lifespan=lifespan)
 from app.api.workspace import router as workspace_router  # noqa: E402
 
 app.include_router(workspace_router)
+from app.api.workflows import router as workflows_router  # noqa: E402
+
+app.include_router(workflows_router)
 
 
 @app.exception_handler(DomainError)

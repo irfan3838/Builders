@@ -1,0 +1,8 @@
+{
+  "_source": "https://developers.openai.com/api/docs/pricing, Standard tier, short context, $ per 1M tokens, checked 2026-11-21",
+  "gpt-5.4-mini": {"input": 0.75, "cached": 0.075, "output": 4.50},
+  "gpt-6-luna": {"input": 0.10, "cached": 0.01, "output": 0.50},
+  "gpt-6-sol": {"input": 2.00, "cached": 0.20, "output": 10.00},
+  "gpt-6.2-sol": {"input": 2.00, "cached": 0.10, "output": 10.00},
+  "gpt-6.2-astra": {"input": 8.00, "cached": 0.40, "output": 40.00}
+}

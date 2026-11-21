@@ -3,6 +3,10 @@ app_env = {
   OPENAI_MODEL_FAST        = "gpt-5.4-mini"
   OPENAI_MODEL_STRONG      = ""
   OPENAI_MODEL_VOICE       = "gpt-live-1.1"
+  # Workflow engine: "1" = checklist workflows (cheap model) + escalation; "0" = single agent loop
+  PURSER_WORKFLOWS         = "0"
+  OPENAI_MODEL_WORKFLOW    = "gpt-6-luna"
+  OPENAI_MODEL_ESCALATION  = "gpt-6-sol"
   GMAIL_ADDRESS            = "sender@example.com"
   EMAIL_ALLOWED_RECIPIENTS = "you@example.com"
   GOOGLE_CLIENT_ID         = "1234-abc.apps.googleusercontent.com"

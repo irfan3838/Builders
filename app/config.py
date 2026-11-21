@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     openai_voice_speed: float = 1.15  # 0.25-1.5; dropped automatically if the live endpoint rejects it
     openai_model_extract: str = ""
     openai_model_transcribe: str = "gpt-transcribe"
+    # Workflow engine (docs: app/agent/workflows/README.md). Off = the single Purser agent loop, unchanged.
+    purser_workflows: bool = False
+    openai_model_workflow: str = ""  # cheap tier for the picker and workflow runs; default = OPENAI_MODEL_FAST
+    openai_model_escalation: str = "gpt-6-sol"  # stronger model for unknown cases and failed checklists
 
     upload_max_bytes: int = 10 * 1024 * 1024
     upload_max_pages: int = 5
@@ -79,6 +83,10 @@ class Settings(BaseSettings):
     @property
     def agent_model(self) -> str:
         return self.openai_model_strong or self.openai_model_fast
+
+    @property
+    def workflow_model(self) -> str:
+        return self.openai_model_workflow or self.openai_model_fast
 
     @property
     def extract_model(self) -> str:

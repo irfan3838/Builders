@@ -12,6 +12,7 @@ import { dur, ease, spring } from "../../animations/tokens";
 import { usePurser, View } from "../../state/store";
 import { useAssistant } from "../assistant/PurserVoiceController";
 import AnimatedCounter from "../shared/AnimatedCounter";
+import RoutinesPanel from "../settings/RoutinesPanel";
 
 const COLLAPSE_KEY = "purser.sidebar.collapsed";
 
@@ -152,13 +153,14 @@ function SettingsDialog({ onClose }: { onClose: () => void }) {
   useEffect(() => { const k = (e: KeyboardEvent) => e.key === "Escape" && onClose(); addEventListener("keydown", k); return () => removeEventListener("keydown", k); }, [onClose]);
   return (
     <motion.div className="scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <motion.div className="dialog glass" role="dialog" aria-modal="true" aria-labelledby="set-title" initial={{ y: 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 10, opacity: 0 }}>
+      <motion.div className="dialog dialog-settings glass" role="dialog" aria-modal="true" aria-labelledby="set-title" initial={{ y: 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 10, opacity: 0 }}>
         <div style={{ display: "flex", alignItems: "center" }}><h2 id="set-title" style={{ flex: 1 }}>Settings</h2>
           <button className="icon-btn" onClick={onClose} aria-label="Close settings"><X size={18} /></button></div>
         <label className="toggle" style={{ marginBottom: 12 }}>
           <input type="checkbox" checked={A.handsFree} onChange={(e) => A.setHandsFree(e.target.checked)} autoFocus />
           Hands-free: wake Purser by saying “Purser” (Chrome/Edge; uses the browser's speech service while armed)
         </label>
+        <RoutinesPanel onRun={(u) => { onClose(); A.send(u); }} />
         <p className="fine">Signed in as {P.me.name} · {P.me.role.replace("_", " ")}.</p>
       </motion.div>
     </motion.div>

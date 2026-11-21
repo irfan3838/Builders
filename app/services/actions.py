@@ -800,3 +800,8 @@ ACTIONS.update({a.kind: a for a in _TRAVEL_ACTIONS})
 from app.services.work import WORK_ACTIONS as _WORK_ACTIONS  # noqa: E402
 
 ACTIONS.update({a.kind: a for a in _WORK_ACTIONS})
+
+# User routines (custom workflows): saving or deleting one is confirmed like any other change.
+from app.services.custom_workflows import CUSTOM_WORKFLOW_ACTIONS as _CUSTOM_WORKFLOW_ACTIONS  # noqa: E402
+
+ACTIONS.update({a.kind: a for a in _CUSTOM_WORKFLOW_ACTIONS})

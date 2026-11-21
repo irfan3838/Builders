@@ -1,0 +1,91 @@
+# Tier 3: edge and unknown cases. Escalation is expected in arm B; correctness is required in every arm.
+
+- id: t3_ambiguous_client
+  tier: 3
+  who: priya
+  turns:
+    - say: "Acme ka paisa aa gaya"
+      expect: {writes: 0, reply_any: ["Tradelinks", "Traders", "which", "kaun"]}
+    - say: "Tradelinks wala"
+      expect: {tools_any: [propose_payment], writes: 0, reply_any: ["60,000", "Tradelinks"]}
+    - say: "haan"
+      expect: {tools_any: [confirm_pending_proposal], writes: 1, db: {invoice_payments: 1}}
+
+- id: t3_amount_correction
+  tier: 3
+  who: priya
+  turns:
+    - say: "Patel Agro se 2,10,000 aaye"
+      expect: {tools_any: [propose_payment], writes: 0}
+    - say: "nahi nahi, 2,01,000 aaye, baaki baad mein"
+      expect: {tools_any: [propose_payment, cancel_pending_proposal], writes: 0, reply_any: ["2,01,000"]}
+    - say: "haan ab theek hai"
+      expect: {tools_any: [confirm_pending_proposal], writes: 1, db: {invoice_payments: 1}}
+
+- id: t3_split_payment_two_invoices
+  tier: 3
+  who: priya
+  turns:
+    - say: "Acme Traders ne 1,63,000 bheja hai, October aur November dono invoice ke liye"
+      expect: {writes: 0, reply_any: ["1,25,000", "38,000", "October", "November"]}
+    - say: "haan"
+      expect: {tools_any: [confirm_pending_proposal], writes: 1}
+
+- id: t3_payment_no_amount
+  tier: 3
+  who: priya
+  turns:
+    - say: "record the Nimbus payment"
+      expect: {writes: 0, reply_any: ["82,500", "Nimbus"]}
+
+- id: t3_out_of_scope
+  tier: 3
+  who: priya
+  turns:
+    - say: "can you file our GST return for October"
+      expect: {writes: 0, tools_none: [confirm_pending_proposal]}
+
+- id: t3_usd_invoice_sent
+  tier: 3
+  who: priya
+  turns:
+    - say: "Northwind ka November invoice bhej diya maine"
+      expect: {tools_any: [propose_invoice_status], writes: 0}
+    - say: "haan"
+      expect: {tools_any: [confirm_pending_proposal], writes: 1}
+
+- id: t3_vague_leave_dates
+  tier: 3
+  who: arjun
+  turns:
+    - say: "early December mein 3 din ki chutti chahiye"
+      expect: {writes: 0, tools_none: [confirm_pending_proposal]}
+
+- id: t3_hindi_devanagari
+  tier: 3
+  who: arjun
+  turns:
+    - say: "मेरी कितनी छुट्टी बची है"
+      expect: {tools_any: [get_leave_balance], lang: hi}
+
+- id: t3_wrong_total_receipt
+  tier: 3
+  who: arjun
+  doc: evals/dev/dev_wrong_total_synthetic.png
+  turns:
+    - say: "maine ye bill upload kiya hai, claim karna hai (document {doc})"
+      expect: {tools_any: [inspect_document], writes: 0, reply_any: ["add up", "match", "total", "correct"]}
+
+- id: t3_hotel_receipt_claim
+  tier: 3
+  who: arjun
+  doc: evals/dev/dev_hotel_receipt_synthetic.png
+  turns:
+    - say: "I paid for this Pune hotel myself, please claim it (document {doc})"
+      expect: {tools_any: [inspect_document], writes: 0}
+    - say: "yes, this is the final bill for that stay"
+      expect: {writes: 0}
+    - say: "Travel category, submit it"
+      expect: {tools_any: [propose_submit_claim], writes: 0}
+    - say: "haan submit karo"
+      expect: {tools_any: [confirm_pending_proposal], writes: 1, db: {claims: 1}}

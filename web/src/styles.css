@@ -635,3 +635,23 @@ button.b-row:hover, a.b-row:hover { background: var(--glass-hi); }
 .gm-msg-h { margin-bottom: 6px; }
 .gm-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font-size: .9rem; line-height: 1.55; color: var(--text); }
 @media (max-width: 900px) { .gm-body { grid-template-columns: 1fr; } }
+
+/* Settings > My routines */
+.dialog-settings { width: min(600px, 100%); max-height: calc(100dvh - 48px); overflow-y: auto; }
+.routines { border-top: 1px solid var(--line); margin: 6px 0 14px; padding-top: 14px; display: grid; gap: 10px; }
+.routines h3 { margin: 0; font-family: var(--serif); font-weight: 500; font-size: 1.2rem; color: var(--ivory); }
+.routines .field textarea.rt-input { min-height: 84px; }
+.rt-preview { border: 1px solid rgba(140, 240, 191, .28); border-radius: 12px; padding: 14px 16px; background: var(--glass-hi); display: grid; gap: 8px; }
+.rt-preview ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; color: var(--text); line-height: 1.5; }
+.rt-head { display: flex; align-items: center; gap: 8px; color: var(--ivory); }
+.rt-badge { display: inline-flex; align-items: center; gap: 4px; font-size: .72rem; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--mint); }
+.rt-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.rt-tool { font-family: var(--mono); font-size: .72rem; padding: 3px 8px; border-radius: 6px; background: rgba(0, 0, 0, .25); color: var(--sage); }
+.rt-warn { color: var(--amber); }
+.rt-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.rt-list li { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); }
+.rt-list .icon-btn { width: 44px; height: 44px; }
+.rt-list .icon-btn:hover { color: var(--mint); background: var(--glass-hi); }
+.spin { animation: rt-spin 0.9s linear infinite; vertical-align: -3px; }
+@keyframes rt-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation-duration: 2.4s; } }

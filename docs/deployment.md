@@ -57,6 +57,19 @@ scripts/aws_run_task.sh migrate                     # only when a migration was 
 terraform -chdir=infra/terraform apply -var image_tag=$TAG
 ```
 
+## Workflow mode (cheaper agent)
+
+Migration `a1f3c9e2b7d4` (workflow state + `escalations` table) must be applied with `scripts/aws_run_task.sh migrate`
+before an image containing it serves traffic. To switch the agent to checklist workflows, set in `terraform.tfvars`
+`app_env`: `PURSER_WORKFLOWS = "1"`, `OPENAI_MODEL_WORKFLOW = "gpt-6-luna"`, `OPENAI_MODEL_ESCALATION = "gpt-6-sol"`, then
+`terraform apply`. Rollback = `PURSER_WORKFLOWS = "0"` and apply (no data change; the old agent path is untouched).
+Evidence for the switch: `evals/reports/<run>/report.md` from `uv run python -m scripts.eval_run --arm A1,B`.
+
+User routines (custom workflows) add migration `c7e2d91a4f60` (`custom_workflows` table, after `a1f3c9e2b7d4`): run
+`scripts/aws_run_task.sh migrate` with the new image first. No new env vars, secrets or AWS resources. Settings > My
+routines and `/api/workflows` work in either mode; *running* a saved routine needs `PURSER_WORKFLOWS = "1"`. Rollback:
+the routes and table are inert when unused; `alembic downgrade a1f3c9e2b7d4` drops the table (deletes saved routines).
+
 ## Email and Google Meet
 
 - `EMAIL_ALLOWED_RECIPIENTS` (tfvars `app_env`): a comma list of addresses, or `*` to email any address on file.

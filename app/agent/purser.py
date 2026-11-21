@@ -14,6 +14,7 @@ from app.agent.tools import (
     charts,
     clarify,
     contracts,
+    custom_workflows,
     finance,
     google,
     intake,
@@ -28,7 +29,7 @@ from app.config import get_settings
 from app.services.records import today_ist
 
 PROMPT = (Path(__file__).parent / "prompts" / "purser.md").read_text()
-ALL_TOOLS = tool_access.apply([*finance.TOOLS, *budget_months.TOOLS, *charts.TOOLS, *intake.TOOLS, *proposals.TOOLS, *people.TOOLS, *revenue.TOOLS, *contracts.TOOLS, *google.TOOLS, *clarify.TOOLS, *travel.TOOLS, *work.TOOLS, *suggestions.TOOLS])
+ALL_TOOLS = tool_access.apply([*finance.TOOLS, *budget_months.TOOLS, *charts.TOOLS, *intake.TOOLS, *proposals.TOOLS, *people.TOOLS, *revenue.TOOLS, *contracts.TOOLS, *google.TOOLS, *clarify.TOOLS, *travel.TOOLS, *work.TOOLS, *suggestions.TOOLS, *custom_workflows.TOOLS])
 
 
 def _instructions(ctx: RunContextWrapper[PurserContext], agent: Agent) -> str:
@@ -43,11 +44,19 @@ def _instructions(ctx: RunContextWrapper[PurserContext], agent: Agent) -> str:
     return f"{base}\n\n## This user's access\n{note}{google}\n"
 
 
-def build_agent(model: str | None = None) -> Agent[PurserContext]:
+def build_agent(model: str | None = None, *, tools: list | None = None, brief: str | None = None,
+                effort: str = "low") -> Agent[PurserContext]:
+    """The Purser agent. `tools` narrows the tool set and `brief` appends context (used by workflow escalation)."""
+    instructions = _instructions
+    if brief:
+        situation = brief  # captured by the closure: the SDK requires an (context, agent) signature exactly
+
+        def instructions(ctx: RunContextWrapper[PurserContext], agent: Agent) -> str:
+            return f"{_instructions(ctx, agent)}\n## Situation (from the workflow engine)\n{situation}\n"
     return Agent[PurserContext](
         name="Purser",
         model=model or get_settings().agent_model,
-        instructions=_instructions,
-        tools=ALL_TOOLS,
-        model_settings=ModelSettings(reasoning=Reasoning(effort="low"), parallel_tool_calls=False),
+        instructions=instructions,
+        tools=ALL_TOOLS if tools is None else tools,
+        model_settings=ModelSettings(reasoning=Reasoning(effort=effort), parallel_tool_calls=False),
     )

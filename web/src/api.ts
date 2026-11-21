@@ -69,6 +69,7 @@ function uploadWithProgress<T>(path: string, file: File, onProgress: (p: number)
 export const api = {
   get: <T>(p: string, signal?: AbortSignal) => call<T>("GET", p, undefined, signal),
   post: <T>(p: string, b?: unknown, signal?: AbortSignal) => call<T>("POST", p, b ?? {}, signal),
+  del: <T>(p: string, signal?: AbortSignal) => call<T>("DELETE", p, undefined, signal),
   upload: uploadWithProgress,
 };
 

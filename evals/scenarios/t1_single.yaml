@@ -1,0 +1,122 @@
+# Tier 1: one action, 1-3 turns, the way people actually say it. Seed business date: Sat 21 Nov 2026.
+
+- id: t1_meetings_today
+  tier: 1
+  who: employee
+  turns:
+    - say: "aaj meri meetings kya hai"
+      expect: {tools_any: [list_meetings], reply_any: ["pipeline", "Q3"]}
+
+- id: t1_travel_left
+  tier: 1
+  who: priya
+  turns:
+    - say: "how much is left in travel this month"
+      expect: {tools_any: [get_budget_month, get_budget_status], reply_any: ["₹", "travel"]}
+
+- id: t1_whats_pending
+  tier: 1
+  who: priya
+  turns:
+    - say: "kya pending hai aaj"
+      expect: {tools_any: [get_attention_items, get_briefing], reply_any: ["Lotus", "invoice", "reminder", "leave", "claim", "approv"]}
+
+- id: t1_revenue_overview
+  tier: 1
+  who: priya
+  turns:
+    - say: "revenue kaisa chal raha hai is mahine"
+      expect: {tools_any: [get_revenue_overview], reply_any: ["₹"]}
+
+- id: t1_overdue_list
+  tier: 1
+  who: priya
+  turns:
+    - say: "who all owe us money right now"
+      expect: {tools_any: [list_client_invoices, build_chart, get_revenue_overview], reply_any: ["Acme", "Zenith", "Patel", "Sahyadri", "Helix", "Nimbus"]}
+
+- id: t1_leave_balance
+  tier: 1
+  who: arjun
+  turns:
+    - say: "meri kitni chutti bachi hai"
+      expect: {tools_any: [get_leave_balance], reply_any: ["CL", "EL", "SL", "casual", "earned", "sick", "day"]}
+
+- id: t1_my_tasks
+  tier: 1
+  who: employee
+  turns:
+    - say: "what do i have to do today"
+      expect: {tools_any: [list_tasks, get_briefing], reply_any: ["Nimbus", "cab", "pipeline", "task"]}
+
+- id: t1_ticket_status
+  tier: 1
+  who: employee
+  turns:
+    - say: "whats the status of my laptop ticket"
+      expect: {tools_any: [list_tickets], reply_any: ["progress", "HD1", "battery"]}
+
+- id: t1_raise_ticket
+  tier: 1
+  who: employee
+  turns:
+    - say: "the AC in the meeting room is not working, please raise a ticket"
+      expect: {tools_any: [propose_ticket], cards_any: [proposal], writes: 0}
+    - say: "haan kar do"
+      expect: {tools_any: [confirm_pending_proposal], writes: 1, db: {tickets: 1}}
+
+- id: t1_add_task_direct
+  tier: 1
+  who: employee
+  turns:
+    - say: "remind me to send the Nimbus deck on monday"
+      expect: {tools_any: [add_task], reply_any: ["Monday", "23"], db: {tasks: 1}}
+
+- id: t1_contract_deadlines
+  tier: 1
+  who: priya
+  turns:
+    - say: "any contract renewals or notice dates coming up"
+      expect: {tools_any: [contract_deadlines], cards_any: [contract_deadlines]}
+
+- id: t1_liabilities
+  tier: 1
+  who: priya
+  turns:
+    - say: "kaunse liabilities humpe hain"
+      expect: {tools_any: [list_liabilities], reply_any: ["Legal", "liab", "cap"]}
+
+- id: t1_budget_alerts
+  tier: 1
+  who: priya
+  turns:
+    - say: "koi budget alert hai kya"
+      expect: {tools_any: [get_budget_alerts]}
+
+- id: t1_policy
+  tier: 1
+  who: arjun
+  turns:
+    - say: "what is the policy for hotel stays on client visits"
+      expect: {tools_any: [lookup_policy]}
+
+- id: t1_fx_rate
+  tier: 1
+  who: priya
+  turns:
+    - say: "dollar ka rate kya chal raha hai"
+      expect: {tools_any: [get_fx_rates], reply_any: ["per dollar", "₹8"]}
+
+- id: t1_chart_clear
+  tier: 1
+  who: priya
+  turns:
+    - say: "show me spend by category this financial year as a bar chart"
+      expect: {tools_any: [build_chart], cards_any: [chart]}
+
+- id: t1_flights_search
+  tier: 1
+  who: arjun
+  turns:
+    - say: "I need to fly from Pune to Delhi on 3rd December"
+      expect: {tools_any: [search_flights], cards_any: [flight_options]}

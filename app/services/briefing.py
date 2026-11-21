@@ -284,6 +284,25 @@ async def _pick(cands: list[dict], role: str) -> dict | None:
         return top
 
 
+async def _routines(a: Actor) -> dict | None:
+    """The user's saved routines (and shared ones): tapping one runs it. Empty -> one item that starts creating one."""
+    if a.read_only:
+        return None
+    from app.agent.workflows import custom  # lazy: the agent layer imports services
+
+    items = [{"title": w.title, "sub": (f"Shared by {w.owner_name}" if w.shared and w.owner_id != a.user_id else
+                                         f"{len(w.checklist)} steps"), "utterance": f"Run {w.title}"}
+             for w in (await custom.for_actor(a))[:4]]
+    if not items:
+        items = [{"title": "Create your own routine", "sub": "Describe steps you repeat; Purser saves them",
+                  "utterance": "Help me set up a custom routine"}]
+    return {"type": "list", "title": "Your routines", "items": items}
+
+
+def forget(user_id: int) -> None:
+    _cache.pop(user_id, None)
+
+
 async def build(a: Actor, *, fresh: bool = False) -> dict:
     hit = _cache.get(a.user_id)
     if hit and not fresh and _time.time() - hit[0] < CACHE_S:
@@ -314,6 +333,9 @@ async def build(a: Actor, *, fresh: bool = False) -> dict:
         sections.append({"type": "list", "title": "Unread in Gmail", "items": [
             {"title": m["subject"], "sub": m["from"], "meta": "important" if m["important"] else "",
              "utterance": f"Summarise the email from {m['from']} about {m['subject']}"} for m in mail]})
+    routines = await _routines(a)
+    if routines is not None:
+        sections.append(routines)
     nba = await _pick(cands, a.role)
     out = {"greeting": _greeting(a.display_name), "role": a.role, "as_of": datetime.now(_tz()).isoformat(timespec="minutes"),
            "next_action": {k: nba[k] for k in ("title", "why", "utterance") if k in nba} if nba else None,
