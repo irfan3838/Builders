@@ -661,7 +661,7 @@ async def test_find_reservations_tool_scopes_to_employee_and_uses_effective_date
 async def test_login_sets_hardened_cookie_and_normalizes_email(seeded):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=ORIGIN) as c:
         r = await c.post("/api/auth/login", json={"email": "  PRIYA@munshi.demo ", "password": "munshi-demo"})
-        assert r.status_code == 200 and r.json()["user"]["role"] == "finance_approver"
+        assert r.status_code == 200 and r.json()["user"]["role"] == "admin"
         cookie = r.headers["set-cookie"].lower()
         assert "httponly" in cookie and "samesite=strict" in cookie and "path=/" in cookie
         assert "no-store" in r.headers["cache-control"]

@@ -186,7 +186,7 @@ function Desk({ me }: { me: Me }) {
       <header className="bar">
         <span className="wordmark">munshi</span>
         <span className="fine">synthetic demo data</span>
-        <span className="me" title={me.role === "finance_approver" ? "Finance approver" : "Employee"}>{me.name}</span>
+        <span className="me" title={me.role === "admin" ? "Finance & HR admin" : me.role === "finance_approver" ? "Finance approver" : "Employee"}>{me.name}</span>
       </header>
 
       <main className="center">

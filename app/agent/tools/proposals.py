@@ -85,6 +85,16 @@ async def confirm_pending_proposal(ctx: Ctx) -> dict:
     """Execute the open proposal ONLY after the user clearly said yes to its preview in their latest reply.
     The server checks the user's own latest utterance; if it is not a clear yes, nothing happens.
     Speak success only from the returned receipt."""
+    from app.services import messaging
+    out = await _confirm(ctx)
+    messaging.dispatch_soon()  # emails go out only after the confirming transaction has committed
+    return out
+
+
+async def _confirm(ctx: Ctx) -> dict:
+    """Execute the open proposal ONLY after the user clearly said yes to its preview in their latest reply.
+    The server checks the user's own latest utterance; if it is not a clear yes, nothing happens.
+    Speak success only from the returned receipt."""
     a = ctx.context.actor
     async with db.session_scope() as s:
         p = await proposals.get_open(s, a)

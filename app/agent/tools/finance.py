@@ -9,7 +9,7 @@ from sqlalchemy import and_, or_, select
 
 from app import db
 from app.agent.context import MunshiContext, safe_tool
-from app.models import AuditEvent, Bill, BudgetLine, Claim, Invoice, Party, Receipt, Settlement
+from app.models import AuditEvent, Bill, BudgetLine, Claim, Invoice, Message, Party, Receipt, Settlement
 from app.money import format_inr
 from app.services import budget, records
 
@@ -109,17 +109,27 @@ async def _attention(s, a) -> list[dict]:
                                                       Claim.settlement_state == "unpaid"))).scalars():
             items.append({"kind": f"my_claim_{c.state}", "ref": c.ref, "who": "you", "amount_paise": c.amount_paise,
                           "date": c.business_date.isoformat(), "detail": c.merchant})
+    from app.services import people as ppl
+    for lr, u in await ppl.leave_requests(s, a, "awaiting_my_decision"):
+        items.append({"kind": "leave_awaiting_decision", "ref": lr.ref, "who": u.display_name, "amount_paise": 0,
+                      "date": lr.start_date.isoformat(), "detail": f"{lr.days} day(s) {lr.leave_type}"})
+    unread = (await s.execute(select(Message).where(Message.workspace_id == a.workspace_id, Message.recipient_user_id == a.user_id,
+                                                   Message.channel == "inbox", Message.read_at.is_(None)))).scalars().all()
+    if unread:
+        items.append({"kind": "unread_messages", "ref": f"{len(unread)} unread", "who": "Inbox", "amount_paise": 0,
+                      "date": None, "detail": unread[0].subject})
     # Stable order: dated items first, oldest date first, then larger amount, then ref.
     items.sort(key=lambda i: (i["date"] is None, i["date"] or "", -i["amount_paise"], i["ref"]))
     for i in items:
-        i["amount"] = format_inr(i.pop("amount_paise"))
+        p = i.pop("amount_paise")
+        i["amount"] = format_inr(p) if p else None
     return items
 
 
 @function_tool
 @safe_tool
 async def get_attention_items(ctx: Ctx, limit: int = 3) -> dict:
-    """What needs attention: pending approvals, approved bills due within 7 days, overdue customer invoices.
+    """What needs attention: pending approvals (claims, bills, leave), bills due within 7 days, overdue invoices, unread inbox.
     Returns at most `limit` (default 3) in a stable order plus the total count. Speak the same list shown on screen."""
     async with db.session_scope() as s:
         items = await _attention(s, ctx.context.actor)

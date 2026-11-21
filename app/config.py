@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,6 +29,24 @@ class Settings(BaseSettings):
     aws_region: str = "us-west-2"
 
     proposal_ttl_seconds: int = 600
+
+    # email (Gmail SMTP with an app password). Real email only to allow-listed demo addresses.
+    gmail_address: str = ""
+    gmail_app_password: str = ""
+    email_allowed_recipients: str = ""
+
+    @field_validator("gmail_address", "gmail_app_password", "email_allowed_recipients", mode="before")
+    @classmethod
+    def _strip(cls, v):
+        return v.strip() if isinstance(v, str) else v
+
+    @property
+    def email_allowlist(self) -> set[str]:
+        return {e.strip().lower() for e in self.email_allowed_recipients.split(",") if e.strip()}
+
+    @property
+    def email_enabled(self) -> bool:
+        return bool(self.gmail_address and self.gmail_app_password)
 
     @property
     def agent_model(self) -> str:

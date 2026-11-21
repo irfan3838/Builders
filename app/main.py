@@ -28,7 +28,29 @@ from app.services import budget, intake, proposals, records, storage  # noqa: E4
 logging.basicConfig(level=get_settings().log_level.upper(), format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-app = FastAPI(title="Munshi", docs_url=None, redoc_url=None)
+from contextlib import asynccontextmanager  # noqa: E402
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    import asyncio
+
+    from app.services import messaging
+
+    async def sweeper():  # backstop: deliver any queued email left by a crash or restart
+        while True:
+            try:
+                await messaging.dispatch()
+            except Exception:
+                logging.getLogger("munshi.messaging").exception("dispatch sweep failed")
+            await asyncio.sleep(30)
+
+    task = asyncio.create_task(sweeper())
+    yield
+    task.cancel()
+
+
+app = FastAPI(title="Munshi", docs_url=None, redoc_url=None, lifespan=lifespan)
 
 
 @app.exception_handler(DomainError)
@@ -156,11 +178,14 @@ async def get_proposal(proposal_id: str, actor: Actor = auth.ActorDep) -> dict:
 @app.post("/api/proposals/{proposal_id}/confirm")
 async def confirm_button(proposal_id: str, actor: Actor = auth.ActorDep) -> dict:
     """User-operated Confirm button: explicit intent from an authenticated, CSRF-checked click."""
+    from app.services import messaging
     async with db.session_scope() as s:
         out = await proposals.confirm(s, actor, proposal_id, via="button", evidence={"channel": "button"})
         r = out.receipt
-        return {"status": out.status, "receipt": {"id": r.id, "ref": r.ref, "summary": r.summary, "effects": r.effects} if r else None,
+        body = {"status": out.status, "receipt": {"id": r.id, "ref": r.ref, "summary": r.summary, "effects": r.effects} if r else None,
                 "new_proposal_id": out.new_proposal.id if out.new_proposal else None}
+    messaging.dispatch_soon()
+    return body
 
 
 @app.post("/api/proposals/{proposal_id}/cancel")
@@ -248,6 +273,66 @@ async def audit_feed(actor: Actor = auth.ActorDep, ref: str | None = None) -> di
                    .all()) if rows else {}
     return {"events": [{"id": e.id, "at": e.created_at.isoformat(), "action": e.action, "record": e.record_ref, "by": name,
                         "receipt": rec.get(e.receipt_id), "after": e.after} for e, name in rows]}
+
+
+@app.get("/api/inbox")
+async def inbox(actor: Actor = auth.ActorDep) -> dict:
+    from app.models import Message, User
+    async with db.session_scope() as s:
+        rows = (await s.execute(select(Message, User.display_name).join(User, User.id == Message.sender_id, isouter=True).where(
+            Message.workspace_id == actor.workspace_id, Message.recipient_user_id == actor.user_id, Message.channel == "inbox")
+            .order_by(Message.id.desc()).limit(10))).all()
+    return {"messages": [{"ref": m.ref, "from": n or "Munshi", "subject": m.subject, "body": m.body, "kind": m.kind,
+                          "unread": m.read_at is None, "at": m.created_at.isoformat()} for m, n in rows]}
+
+
+@app.get("/api/people/{user_id}/leave")
+async def leave_card(user_id: int, actor: Actor = auth.ActorDep) -> dict:
+    from app.services import people
+    async with db.session_scope() as s:
+        u = await people.user(s, actor, user_id)
+        if not people.can_view_person_private(actor, u):
+            raise HTTPException(404, "Not found")
+        bal = await people.balance(s, actor.workspace_id, u.id)
+    return {"user_id": u.id, "name": u.display_name, "balances": bal}
+
+
+@app.get("/api/leave-requests")
+async def leave_requests_card(actor: Actor = auth.ActorDep, scope: str = "mine") -> dict:
+    from app.services import people
+    if scope not in ("mine", "awaiting_my_decision", "team"):
+        raise HTTPException(400, "bad scope")
+    async with db.session_scope() as s:
+        rows = await people.leave_requests(s, actor, scope)
+    return {"scope": scope, "requests": [{"ref": lr.ref, "person": u.display_name, "type": lr.leave_type, "from": lr.start_date.isoformat(),
+                                          "to": lr.end_date.isoformat(), "days": lr.days, "state": lr.state} for lr, u in rows]}
+
+
+@app.get("/api/people/{user_id}")
+async def person_card(user_id: int, actor: Actor = auth.ActorDep) -> dict:
+    from app.models import User
+    from app.services import people
+    async with db.session_scope() as s:
+        u = await people.user(s, actor, user_id)
+        private = people.can_view_person_private(actor, u)
+        mgr = await s.get(User, u.reports_to_id) if u.reports_to_id else None
+        tasks = await people.onboarding_tasks(s, actor.workspace_id, u.id) if private else []
+    return {"user_id": u.id, "name": u.display_name, "designation": u.designation, "department": u.department,
+            "manager": mgr.display_name if mgr else None, "start_date": u.start_date.isoformat() if (private and u.start_date) else None,
+            "status": u.status if private else None,
+            "tasks": [{"title": t.title, "owner": t.owner, "due": t.due_date.isoformat() if t.due_date else None, "status": t.status} for t in tasks]}
+
+
+@app.get("/api/receipts/{receipt_id}/deliveries")
+async def receipt_deliveries(receipt_id: int, actor: Actor = auth.ActorDep) -> dict:
+    from app.models import Message, User
+    async with db.session_scope() as s:
+        r = (await s.execute(select(Receipt).where(Receipt.id == receipt_id, Receipt.workspace_id == actor.workspace_id))).scalars().first()
+        if r is None or (not actor.is_approver and not actor.is_hr and r.actor_id != actor.user_id):
+            raise HTTPException(404, "Receipt not found")
+        rows = (await s.execute(select(Message, User.display_name).join(User, User.id == Message.recipient_user_id, isouter=True)
+                                .where(Message.receipt_id == r.id).order_by(Message.id))).all()
+    return {"deliveries": [{"ref": m.ref, "to": n, "channel": m.channel, "status": m.status, "detail": m.status_detail} for m, n in rows]}
 
 
 class SDPIn(BaseModel):

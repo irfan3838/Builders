@@ -19,11 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.actor import Actor
 from app.config import get_settings
 from app.errors import NOT_FOUND, PROPOSAL_CLOSED, DomainError
-from app.models import Bill, Claim, Conversation, Document, Proposal, Receipt, Reservation
+from app.models import Bill, Claim, Conversation, Document, LeaveRequest, Proposal, Receipt, Reservation
 from app.services import audit
 from app.services.actions import ACTIONS
 
-VERSIONED = {"documents": Document, "reservations": Reservation, "claims": Claim, "bills": Bill}
+VERSIONED = {"documents": Document, "reservations": Reservation, "claims": Claim, "bills": Bill, "leave_requests": LeaveRequest}
 
 
 def _now() -> datetime:

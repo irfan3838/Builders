@@ -76,6 +76,7 @@ function ReceiptCard({ id, bump }: { id: number; bump: number }) {
       <div className="card-head"><span className="kind">Receipt</span><h2>{data.preview?.title ?? "Executed"}</h2><span className="ref">{data.ref}</span></div>
       <p className="receipt-summary num">{data.summary}</p>
       {budget && <p className="num">{budget.category} available: {fmt(budget.before.available_paise)} → <strong>{fmt(budget.after.available_paise)}</strong></p>}
+      <Deliveries receiptId={id} bump={bump} />
       <p className="hint">{VIA[data.confirmed_via] ?? data.confirmed_via} · {new Date(data.created_at).toLocaleTimeString("en-IN")}</p>
     </section>
   );
@@ -172,7 +173,7 @@ function ListCard({ items }: { items: any[] }) {
       <ol className="list">
         {items.map((i) => (
           <li key={i.ref}><span><strong>{i.who}</strong> <span className="ref">{i.ref}</span><div className="sub">{i.kind.replaceAll("_", " ")}{i.detail ? ` · ${i.detail}` : ""}</div></span>
-            <span className="num amount">{i.amount}</span></li>
+            <span className="num amount">{i.amount ?? ""}</span></li>
         ))}
       </ol>
     </section>
@@ -197,6 +198,92 @@ function AuditCard({ refId, bump }: { refId?: string; bump: number }) {
   );
 }
 
+function InboxCard({ bump }: { bump: number }) {
+  const { data, err } = useLoad<any>("/api/inbox", bump);
+  if (err) return <Failed what="inbox" err={err} />;
+  if (!data) return <Loading what="inbox" />;
+  return (
+    <section className="card">
+      <div className="card-head"><span className="kind">Inbox</span><h2>{data.messages.filter((m: any) => m.unread).length || "No"} new</h2></div>
+      <ul className="list">
+        {data.messages.slice(0, 6).map((m: any) => (
+          <li key={m.ref}><span><strong>{m.subject}</strong><div className="sub">{m.from} · {m.body.slice(0, 110)}{m.body.length > 110 ? "…" : ""}</div></span>
+            <span className="ref">{m.ref}</span></li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+const LEAVE_NAME: Record<string, string> = { CL: "Casual", SL: "Sick", EL: "Earned" };
+
+function LeaveCard({ userId, bump }: { userId: number; bump: number }) {
+  const { data, err } = useLoad<any>(`/api/people/${userId}/leave`, bump);
+  if (err) return <Failed what="leave balance" err={err} />;
+  if (!data) return <Loading what="leave balance" />;
+  return (
+    <section className="card">
+      <div className="card-head"><span className="kind">Leave balance</span><h2>{data.name}</h2></div>
+      <div className="buckets">
+        {Object.entries<any>(data.balances).map(([k, v]) => (
+          <div key={k} className="bucket available"><div className="label">{LEAVE_NAME[k] ?? k}</div>
+            <div className="amount num">{v.available}<span className="hint"> / {v.granted}</span></div>
+            {v.reserved > 0 && <div className="hint">{v.reserved} pending</div>}</div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function LeaveRequestsCard({ scope, bump }: { scope: string; bump: number }) {
+  const { data, err } = useLoad<any>(`/api/leave-requests?scope=${scope}`, bump);
+  if (err) return <Failed what="leave requests" err={err} />;
+  if (!data) return <Loading what="leave requests" />;
+  const title = scope === "awaiting_my_decision" ? "Awaiting your decision" : scope === "team" ? "Team leave" : "Your leave";
+  return (
+    <section className="card">
+      <div className="card-head"><span className="kind">Leave</span><h2>{title}</h2></div>
+      {data.requests.length === 0 ? <p className="hint">None.</p> : (
+        <ul className="list">{data.requests.map((r: any) => (
+          <li key={r.ref}><span><strong>{r.person}</strong> <span className="ref">{r.ref}</span>
+            <div className="sub">{LEAVE_NAME[r.type] ?? r.type} · {r.from}{r.to !== r.from ? ` → ${r.to}` : ""} · {r.days} day(s)</div></span>
+            <span className={`state state-${r.state === "approved" ? "executed" : r.state === "submitted" ? "open" : "closed"}`}>{r.state}</span></li>
+        ))}</ul>
+      )}
+    </section>
+  );
+}
+
+function PersonCard({ userId, bump }: { userId: number; bump: number }) {
+  const { data, err } = useLoad<any>(`/api/people/${userId}`, bump);
+  if (err) return <Failed what="person" err={err} />;
+  if (!data) return <Loading what="person" />;
+  return (
+    <section className="card">
+      <div className="card-head"><span className="kind">{data.status === "invited" ? "New joiner" : "Person"}</span><h2>{data.name}</h2></div>
+      <dl className="kv">
+        <dt>Role</dt><dd>{data.designation || "—"}</dd><dt>Department</dt><dd>{data.department || "—"}</dd>
+        <dt>Manager</dt><dd>{data.manager || "—"}</dd>{data.start_date && <><dt>Starts</dt><dd>{data.start_date}</dd></>}
+      </dl>
+      {data.tasks.length > 0 && (
+        <ul className="list" style={{ marginTop: 10 }}>{data.tasks.map((t: any, i: number) => (
+          <li key={i}><span>{t.title}<div className="sub">{t.owner} · due {t.due}</div></span>
+            <span className={`state ${t.status === "done" ? "state-executed" : ""}`}>{t.status}</span></li>
+        ))}</ul>
+      )}
+    </section>
+  );
+}
+
+function Deliveries({ receiptId, bump }: { receiptId: number; bump: number }) {
+  const { data } = useLoad<any>(`/api/receipts/${receiptId}/deliveries`, bump);
+  if (!data || data.deliveries.length === 0) return null;
+  const by = (st: string) => data.deliveries.filter((d: any) => d.status === st).length;
+  return <p className="hint">Delivered to {by("delivered") + by("read")} inbox(es){by("sent") ? ` · ${by("sent")} email sent` : ""}
+    {by("queued") ? ` · ${by("queued")} email sending` : ""}{by("skipped") ? ` · ${by("skipped")} email skipped (not allow-listed)` : ""}
+    {by("failed") ? ` · ${by("failed")} email failed` : ""}</p>;
+}
+
 export function CardView({ card, bump, onChanged }: { card: Card; bump: number; onChanged: () => void }) {
   switch (card.card) {
     case "proposal": return <ProposalCard id={card.proposal_id} bump={bump} onChanged={onChanged} />;
@@ -207,11 +294,15 @@ export function CardView({ card, bump, onChanged }: { card: Card; bump: number; 
     case "record": return <RecordCard refId={card.ref} bump={bump} />;
     case "record_list": return <ListCard items={card.items || []} />;
     case "audit_trail": return <AuditCard refId={card.ref || undefined} bump={bump} />;
+    case "inbox": return <InboxCard bump={bump} />;
+    case "leave": return <LeaveCard userId={card.user_id} bump={bump} />;
+    case "leave_requests": return <LeaveRequestsCard scope={card.scope || "mine"} bump={bump} />;
+    case "person": return <PersonCard userId={card.user_id} bump={bump} />;
     default: return null;
   }
 }
 
 /** Collapse repeats: the newest card for the same object replaces the older one. */
 export function cardKey(c: Card): string {
-  return c.card + ":" + (c.proposal_id ?? c.receipt_id ?? c.document_id ?? c.line_id ?? c.ref ?? JSON.stringify(c.items?.map((i: any) => i.ref) ?? ""));
+  return c.card + ":" + (c.proposal_id ?? c.receipt_id ?? c.document_id ?? c.line_id ?? c.user_id ?? c.scope ?? c.ref ?? JSON.stringify(c.items?.map((i: any) => i.ref) ?? ""));
 }

@@ -7,10 +7,10 @@ The model supplies only routing decisions (who, which category, which reservatio
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Protocol
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.actor import Actor
@@ -18,6 +18,7 @@ from app.errors import (
     ALREADY_SETTLED,
     FORBIDDEN,
     INVALID_STATE,
+    NOT_FOUND,
     SELF_APPROVAL,
     VALIDATION,
     DomainError,
@@ -386,7 +387,10 @@ class Approve:
     kind = "approve"
 
     def _target(self, args: dict[str, Any]) -> Action:
-        return ApproveClaim() if args["ref"].strip().upper().startswith("C") else ApproveBill()
+        r = args["ref"].strip().upper()
+        if r.startswith("L"):
+            return DecideLeave("approve")
+        return ApproveClaim() if r.startswith("C") else ApproveBill()
 
     async def plan(self, s, actor, args):
         return await self._target(args).plan(s, actor, args)
@@ -395,4 +399,261 @@ class Approve:
         return await self._target(args).execute(s, actor, args, receipt_id)
 
 
-ACTIONS: dict[str, Action] = {a.kind: a for a in (SubmitClaim(), SubmitBill(), Approve(), Settle())}
+
+
+
+# ---------------------------------------------------------------- people operations
+
+LEAVE_NAMES = {"CL": "casual leave", "SL": "sick leave", "EL": "earned leave"}
+
+
+async def _leave_inputs(s, actor, args):
+    from app.services import people
+    lt = args["leave_type"].upper()
+    if lt not in people.LEAVE_TYPES:
+        raise DomainError(VALIDATION, f"Leave type must be one of {sorted(people.LEAVE_TYPES)}.")
+    try:
+        start, end = date.fromisoformat(args["start_date"]), date.fromisoformat(args.get("end_date") or args["start_date"])
+    except ValueError as e:
+        raise DomainError(VALIDATION, "Dates must be YYYY-MM-DD.") from e
+    if end < start:
+        raise DomainError(VALIDATION, "End date is before start date.")
+    who = await people.user(s, actor, int(args.get("user_id") or actor.user_id))
+    if who.id != actor.user_id and not actor.is_hr:
+        raise DomainError(FORBIDDEN, "You can only apply for your own leave.")
+    days = people.working_days(start, end)
+    if days == 0:
+        raise DomainError(VALIDATION, "Those dates are all weekend days; no leave is needed.")
+    clash = await people.overlapping(s, actor.workspace_id, who.id, start, end)
+    if clash:
+        raise DomainError(INVALID_STATE, f"Overlaps leave {clash.ref} ({clash.start_date:%d %b}–{clash.end_date:%d %b}, {clash.state}).")
+    bal = (await people.balance(s, actor.workspace_id, who.id))[lt]
+    if bal["available"] < days:
+        raise DomainError(VALIDATION, f"Only {bal['available']} day(s) of {LEAVE_NAMES[lt]} available; {days} requested.",
+                          available=bal["available"])
+    return who, lt, start, end, days, bal
+
+
+class ApplyLeave:
+    kind = "apply_leave"
+
+    async def plan(self, s, actor, args):
+        who, lt, start, end, days, bal = await _leave_inputs(s, actor, args)
+        span = _fmt_date(start) if start == end else f"{_fmt_date(start)} to {_fmt_date(end)}"
+        lines = [f"Apply {days} day(s) of {LEAVE_NAMES[lt]} for {who.display_name}: {span}."
+                 + (f" Reason: {args['reason']}." if args.get("reason") else ""),
+                 f"{LEAVE_NAMES[lt].capitalize()} available after approval: {bal['available'] - days} of {bal['granted']}.",
+                 "It goes to the manager for approval; the days are held until then."]
+        return Plan("Apply for leave", lines, f"Apply {days} day {LEAVE_NAMES[lt]} for {span}?", [])
+
+    async def execute(self, s, actor, args, receipt_id):
+        from app.models import LeaveRequest
+        from app.services import people
+        who, lt, start, end, days, bal = await _leave_inputs(s, actor, args)
+        lr = LeaveRequest(workspace_id=actor.workspace_id, ref="pending", user_id=who.id, submitted_by=actor.user_id, leave_type=lt,
+                          start_date=start, end_date=end, days=days, reason=(args.get("reason") or None))
+        s.add(lr)
+        await s.flush()
+        lr.ref = f"L{lr.id}"
+        await people.post_leave(s, actor.workspace_id, who.id, lt, "reserved", days, "leave_requested", source_id=lr.id, receipt_id=receipt_id)
+        await audit.record(s, actor, "leave.submitted", record_type="leave", record_id=lr.id, record_ref=lr.ref,
+                           after={"user_id": who.id, "type": lt, "days": days}, receipt_id=receipt_id)
+        return Execution(f"Leave {lr.ref} submitted: {days} day(s) {LEAVE_NAMES[lt]} for {who.display_name}, awaiting approval.",
+                         [{"type": "leave_submitted", "ref": lr.ref, "user_id": who.id}])
+
+
+async def _leave_decision_inputs(s, actor, args, for_update=False):
+    from app.services import people
+    lr = await people.leave_by_ref(s, actor, args["ref"], for_update=for_update)
+    owner = await people.user(s, actor, lr.user_id)
+    if lr.state != "submitted":
+        raise DomainError(INVALID_STATE, f"Leave {lr.ref} is {lr.state}.")
+    if lr.user_id == actor.user_id:
+        raise DomainError(SELF_APPROVAL, "You cannot decide your own leave.")
+    if not (actor.is_hr or owner.reports_to_id == actor.user_id):
+        raise DomainError(FORBIDDEN, "Only the manager or HR can decide this leave.")
+    return lr, owner
+
+
+class DecideLeave:
+    def __init__(self, decision: str):
+        self.decision = decision
+        self.kind = "approve_leave" if decision == "approve" else "reject_leave"
+
+    async def plan(self, s, actor, args):
+        lr, owner = await _leave_decision_inputs(s, actor, args)
+        verb = "Approve" if self.decision == "approve" else "Reject"
+        lines = [f"{verb} leave {lr.ref}: {owner.display_name}, {lr.days} day(s) {LEAVE_NAMES[lr.leave_type]}, "
+                 f"{_fmt_date(lr.start_date)} to {_fmt_date(lr.end_date)}.",
+                 f"{owner.display_name.split()[0]} is told in the Munshi inbox" + (" and by email." if owner.notify_email else ".")]
+        if self.decision == "reject" and args.get("note"):
+            lines.append(f"Reason given: {args['note']}")
+        return Plan(f"{verb} leave", lines, f"{verb} {owner.display_name}'s {lr.days}-day leave?",
+                    [{"table": "leave_requests", "id": lr.id, "version": lr.version}])
+
+    async def execute(self, s, actor, args, receipt_id):
+        from app.services import messaging, people
+        lr, owner = await _leave_decision_inputs(s, actor, args, for_update=True)
+        await people.post_leave(s, actor.workspace_id, lr.user_id, lr.leave_type, "reserved", -lr.days, f"leave_{self.decision}d",
+                                source_id=lr.id, receipt_id=receipt_id)
+        if self.decision == "approve":
+            await people.post_leave(s, actor.workspace_id, lr.user_id, lr.leave_type, "used", lr.days, "leave_approved",
+                                    source_id=lr.id, receipt_id=receipt_id)
+        lr.state = "approved" if self.decision == "approve" else "rejected"
+        lr.approver_id, lr.decision_note, lr.version = actor.user_id, (args.get("note") or None), lr.version + 1
+        word = "approved" if self.decision == "approve" else "not approved"
+        body = (f"Hi {owner.display_name.split()[0]},\n\nYour {LEAVE_NAMES[lr.leave_type]} ({lr.ref}) from {_fmt_date(lr.start_date)} "
+                f"to {_fmt_date(lr.end_date)}, {lr.days} day(s), has been {word} by {actor.display_name}."
+                + (f"\nNote: {lr.decision_note}" if lr.decision_note else ""))
+        sent = await messaging.compose(s, actor, [owner], kind="leave_decision", subject=f"Leave {lr.ref} {word}", body=body,
+                                       channels=["inbox", "email"], receipt_id=receipt_id)
+        await audit.record(s, actor, f"leave.{lr.state}", record_type="leave", record_id=lr.id, record_ref=lr.ref,
+                           after={"state": lr.state, "note": lr.decision_note}, receipt_id=receipt_id)
+        return Execution(f"Leave {lr.ref} {word}; {owner.display_name} notified.",
+                         [{"type": f"leave_{lr.state}", "ref": lr.ref}, {"type": "messages", **sent}])
+
+
+async def _onboard_inputs(s, actor, args):
+    from app.models import User
+    from app.services import people
+    if not actor.is_hr:
+        raise DomainError(FORBIDDEN, "Only HR/admin can onboard employees.")
+    name = (args.get("name") or "").strip()
+    if len(name.split()) < 1 or len(name) < 2:
+        raise DomainError(VALIDATION, "Full name is required.")
+    if len(name) > 120:
+        raise DomainError(VALIDATION, "That name is too long (max 120 characters).")
+    email = (args.get("work_email") or "").strip().lower()
+    if not email or "@" not in email:
+        local = ".".join(normalize_part for normalize_part in name.lower().split())
+        email = f"{local}@munshi.demo"
+    if (await s.execute(select(User).where(User.email == email))).scalars().first():
+        raise DomainError(INVALID_STATE, f"A login for {email} already exists.")
+    manager = await people.user(s, actor, int(args["manager_user_id"])) if args.get("manager_user_id") else None
+    try:
+        start = date.fromisoformat(args["start_date"])
+    except (KeyError, ValueError) as e:
+        raise DomainError(VALIDATION, "Start date YYYY-MM-DD is required.") from e
+    return name, email, manager, start
+
+
+class OnboardEmployee:
+    kind = "onboard_employee"
+
+    async def plan(self, s, actor, args):
+        from app.services import messaging, people
+        name, email, manager, start = await _onboard_inputs(s, actor, args)
+        grants = ", ".join(f"{v[1]} {k}" for k, v in people.LEAVE_TYPES.items())
+        fake = type("U", (), {"notify_email": args.get("personal_email")})()
+        to, verdict = messaging.email_plan(fake)
+        mail = {"deliverable": f"welcome email to {to}", "not_on_allowlist": f"no email ({to} is not on the demo allow-list)",
+                "email_not_configured": "no email (email not configured)", "no_email": "no personal email given"}[verdict]
+        lines = [f"Create employee login for {name} <{email}>: {args.get('designation') or 'Employee'}, "
+                 f"{args.get('department') or 'unassigned'} department, starting {_fmt_date(start)}.",
+                 f"Reports to {manager.display_name}." if manager else "No manager set yet.",
+                 f"Leave balances for this year: {grants}.",
+                 f"Onboarding checklist: {len(people.ONBOARDING_CHECKLIST)} tasks (laptop, KYC and bank details, policy acknowledgement, first-week plan).",
+                 f"Welcome message in the Munshi inbox; {mail}."]
+        return Plan("Onboard employee", lines, f"Onboard {name} as {args.get('designation') or 'employee'} in "
+                    f"{args.get('department') or 'the company'}, starting {_fmt_date(start)}?", [])
+
+    async def execute(self, s, actor, args, receipt_id):
+        import secrets
+
+        from argon2 import PasswordHasher
+
+        from app.models import OnboardingTask, User
+        from app.services import messaging, people
+        name, email, manager, start = await _onboard_inputs(s, actor, args)
+        party = Party(workspace_id=actor.workspace_id, kind="employee", name=name, normalized_name=records.normalize_name(name), aliases=[])
+        s.add(party)
+        await s.flush()
+        u = User(workspace_id=actor.workspace_id, email=email, display_name=name, role="employee", party_id=party.id,
+                 password_hash=PasswordHasher().hash(secrets.token_urlsafe(18)), department=args.get("department"),
+                 designation=args.get("designation"), reports_to_id=manager.id if manager else None, start_date=start,
+                 status="invited", notify_email=(args.get("personal_email") or None))
+        s.add(u)
+        await s.flush()
+        for code, (_, days) in people.LEAVE_TYPES.items():
+            await people.post_leave(s, actor.workspace_id, u.id, code, "granted", days, "annual_grant", receipt_id=receipt_id,
+                                    memo="Onboarding grant")
+        for title, owner, offset in people.ONBOARDING_CHECKLIST:
+            s.add(OnboardingTask(workspace_id=actor.workspace_id, user_id=u.id, title=title, owner=owner,
+                                 due_date=start + timedelta(days=offset), status="done" if owner == "hr" and offset == 0 else "open",
+                                 done_by=actor.user_id if owner == "hr" and offset == 0 else None))
+        body = (f"Welcome to the team, {name.split()[0]}!\n\nYou join as {args.get('designation') or 'a team member'} in "
+                f"{args.get('department') or 'the company'} on {_fmt_date(start)}"
+                + (f", reporting to {manager.display_name}" if manager else "") + ".\n"
+                "Your Munshi account is ready: ask it about leave, expenses and policies by voice, in Hindi or English.\n"
+                "Before day one, please keep your PAN, Aadhaar and bank details ready.")
+        sent = await messaging.compose(s, actor, [u], kind="welcome", subject="Welcome aboard", body=body,
+                                       channels=["inbox", "email"], receipt_id=receipt_id)
+        await audit.record(s, actor, "employee.onboarded", record_type="user", record_id=u.id, record_ref=f"U{u.id}",
+                           after={"name": name, "email": email, "department": u.department, "manager_id": u.reports_to_id},
+                           receipt_id=receipt_id)
+        return Execution(f"{name} onboarded (U{u.id}); welcome message sent.",
+                         [{"type": "employee_onboarded", "user_id": u.id}, {"type": "messages", **sent}])
+
+
+async def _message_inputs(s, actor, args):
+    from app.models import User
+    from app.services import people
+    audience = args.get("audience", "person")
+    q = select(User).where(User.workspace_id == actor.workspace_id)
+    if audience == "all":
+        if not actor.is_hr:
+            raise DomainError(FORBIDDEN, "Only HR/admin can message the whole company.")
+        recipients = list((await s.execute(q)).scalars().all())
+    elif audience == "department":
+        dept = (args.get("department") or "").strip()
+        if not actor.is_hr:
+            raise DomainError(FORBIDDEN, "Only HR/admin can message a whole department.")
+        recipients = list((await s.execute(q.where(func.lower(User.department) == dept.lower()))).scalars().all())
+        if not recipients:
+            raise DomainError(NOT_FOUND, f"No one in department '{dept}'.")
+    else:
+        ids = [int(i) for i in (args.get("user_ids") or [])]
+        if not ids:
+            raise DomainError(VALIDATION, "Choose at least one recipient.")
+        recipients = [await people.user(s, actor, i) for i in ids]
+    recipients = [u for u in recipients if u.id != actor.user_id] or recipients
+    subject, body = (args.get("subject") or "").strip(), (args.get("body") or "").strip()
+    if not body:
+        raise DomainError(VALIDATION, "The message body is empty.")
+    if len(subject) > 200:
+        raise DomainError(VALIDATION, "The subject is too long (max 200 characters); shorten it.")
+    channels = [c for c in (args.get("channels") or ["inbox"]) if c in ("inbox", "email")] or ["inbox"]
+    return recipients, subject or body[:60], body, channels, audience
+
+
+class SendMessage:
+    kind = "send_message"
+
+    async def plan(self, s, actor, args):
+        from app.services import messaging
+        recipients, subject, body, channels, audience = await _message_inputs(s, actor, args)
+        names = ", ".join(u.display_name for u in recipients[:5]) + (f" and {len(recipients) - 5} more" if len(recipients) > 5 else "")
+        lines = [f"To: {names} ({len(recipients)} {'person' if len(recipients) == 1 else 'people'}).", f"Subject: {subject}", f"Message: {body}"]
+        if "email" in channels:
+            verdicts = [messaging.email_plan(u)[1] for u in recipients]
+            ok = verdicts.count("deliverable")
+            lines.append(f"Email: {ok} will be emailed; {len(recipients) - ok} get the inbox copy only"
+                         + (" (email not configured)." if "email_not_configured" in verdicts else " (no allow-listed address)." if ok < len(recipients) else "."))
+        lines.append("Channels: " + " + ".join("Munshi inbox" if c == "inbox" else "email" for c in channels) + ".")
+        kind = "announcement" if audience in ("all", "department") else "message"
+        return Plan("Send announcement" if kind == "announcement" else "Send message", lines,
+                    f"Send this {kind} to {names}?", [])
+
+    async def execute(self, s, actor, args, receipt_id):
+        from app.services import messaging
+        recipients, subject, body, channels, audience = await _message_inputs(s, actor, args)
+        kind = "announcement" if audience in ("all", "department") else "message"
+        sent = await messaging.compose(s, actor, recipients, kind=kind, subject=subject, body=body, channels=channels, receipt_id=receipt_id)
+        await audit.record(s, actor, f"{kind}.sent", record_type="message", after={"subject": subject, "recipients": len(recipients),
+                           **{k: v for k, v in sent.items() if k != "batch_id"}}, receipt_id=receipt_id)
+        detail = f"{sent['inbox']} inbox" + (f", {sent['email_queued']} email queued, {sent['email_skipped']} email skipped" if "email" in channels else "")
+        return Execution(f"{kind.capitalize()} '{subject}' sent to {len(recipients)} ({detail}).", [{"type": "messages", **sent}])
+
+
+ACTIONS: dict[str, Action] = {a.kind: a for a in (SubmitClaim(), SubmitBill(), Approve(), Settle(), ApplyLeave(),
+                                                  DecideLeave("reject"), OnboardEmployee(), SendMessage())}

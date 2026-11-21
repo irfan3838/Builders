@@ -72,6 +72,13 @@ class User(Base, TimestampMixin):
     password_hash: Mapped[str] = mapped_column(String(300))
     party_id: Mapped[int | None] = mapped_column(BigInteger)
     preferred_language: Mapped[str] = mapped_column(String(20), default="hinglish")
+    # people ops
+    department: Mapped[str | None] = mapped_column(String(60))
+    designation: Mapped[str | None] = mapped_column(String(80))
+    reports_to_id: Mapped[int | None] = mapped_column(BigInteger)
+    start_date: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(20), default="active")  # active | invited
+    notify_email: Mapped[str | None] = mapped_column(String(200))  # real inbox for demo email (allow-listed)
 
 
 class Trip(Base, TimestampMixin):
@@ -353,3 +360,85 @@ class ResultSnapshot(Base, TimestampMixin):
     rows: Mapped[list] = mapped_column(JSONB)
     totals: Mapped[dict] = mapped_column(JSONB)
     meta: Mapped[dict] = mapped_column(JSONB)
+
+
+# ------------------------------------------------------------------ people operations
+
+
+class LeaveMovement(Base, TimestampMixin):
+    """Append-only leave ledger per user and type. available = granted - reserved - used (whole days)."""
+
+    __tablename__ = "leave_movements"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    leave_type: Mapped[str] = mapped_column(String(10))  # CL | SL | EL
+    bucket: Mapped[str] = mapped_column(String(10))  # granted | reserved | used
+    days: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(40))
+    source_id: Mapped[int | None] = mapped_column(BigInteger)
+    receipt_id: Mapped[int | None] = mapped_column(BigInteger)
+    memo: Mapped[str | None] = mapped_column(String(300))
+
+
+class LeaveRequest(Base, TimestampMixin):
+    __tablename__ = "leave_requests"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    ref: Mapped[str] = mapped_column(String(20), index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    submitted_by: Mapped[int] = mapped_column(BigInteger)
+    leave_type: Mapped[str] = mapped_column(String(10))
+    start_date: Mapped[date] = mapped_column(Date)
+    end_date: Mapped[date] = mapped_column(Date)
+    days: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str | None] = mapped_column(String(300))
+    state: Mapped[str] = mapped_column(String(20), default="submitted")  # submitted | approved | rejected | cancelled
+    approver_id: Mapped[int | None] = mapped_column(BigInteger)
+    decision_note: Mapped[str | None] = mapped_column(String(300))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class Message(Base, TimestampMixin):
+    """Inbox item and/or email outbox row. Email rows are delivered after the confirming transaction commits."""
+
+    __tablename__ = "messages"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    ref: Mapped[str] = mapped_column(String(20), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # announcement | message | welcome | leave_decision
+    channel: Mapped[str] = mapped_column(String(10))  # inbox | email
+    sender_id: Mapped[int | None] = mapped_column(BigInteger)
+    recipient_user_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    email_to: Mapped[str | None] = mapped_column(String(200))
+    subject: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20))  # delivered | read | queued | sent | skipped | failed
+    status_detail: Mapped[str | None] = mapped_column(String(300))
+    provider_id: Mapped[str | None] = mapped_column(String(200))
+    batch_id: Mapped[str | None] = mapped_column(String(40), index=True)
+    receipt_id: Mapped[int | None] = mapped_column(BigInteger)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class OnboardingTask(Base, TimestampMixin):
+    __tablename__ = "onboarding_tasks"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    owner: Mapped[str] = mapped_column(String(20))  # hr | it | manager | employee
+    due_date: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(20), default="open")  # open | done
+    done_by: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class Policy(Base, TimestampMixin):
+    __tablename__ = "policies"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    code: Mapped[str] = mapped_column(String(20))  # e.g. HR-4.2
+    topic: Mapped[str] = mapped_column(String(60), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text)

@@ -114,6 +114,12 @@ Create a short demo script with expected results and a fallback recording/screen
 - Separate prompt templates, model configuration, tool implementations, and business logic so they can be iterated quickly.
 - For agent evaluation, maintain a tiny representative test set (successful, tricky, and failure cases). Use measured task success, not just whether the LLM returned text.
 
+## Testing is delegated to Sonnet (user rule, 2026-11-21)
+
+- Only a Sonnet subagent writes and runs tests. The main session must not invoke test runners; the PreToolUse hook `.claude/hooks/tests-only-in-sonnet.sh` blocks them.
+- Every set of tests gets a NEW Sonnet agent (fresh spawn, new name); never reuse a previous tester via SendMessage. `.claude/hooks/fresh-sonnet-per-test-set.sh` denies SendMessage to tester agents and test-work spawns that are forks or not `model: "sonnet"`.
+- For each build block's gate, spawn the Sonnet tester (Agent with `model: "sonnet"`). Tell it not to edit app code and to mark genuine bugs as strict xfail with evidence. Then fix the bugs and relay its counts to the user.
+
 ## ECC & Skill Routing
 
 - **Override ECC Enterprise Defaults:** Ignore ECC's 80% TDD coverage mandate and multi-round code review loops during Phases 1–3; follow the vertical-slice and selective-testing rules in this file instead.

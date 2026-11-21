@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 
 FINANCE_APPROVER = "finance_approver"
+ADMIN = "admin"  # finance approver + HR/admin
+HR_ADMIN = "hr_admin"
 EMPLOYEE = "employee"
 
 
@@ -17,4 +19,10 @@ class Actor:
 
     @property
     def is_approver(self) -> bool:
-        return self.role == FINANCE_APPROVER
+        """Finance approval rights."""
+        return self.role in (FINANCE_APPROVER, ADMIN)
+
+    @property
+    def is_hr(self) -> bool:
+        """HR/admin rights: onboarding, company-wide announcements, all leave."""
+        return self.role in (ADMIN, HR_ADMIN)

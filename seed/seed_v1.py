@@ -68,11 +68,22 @@ async def seed(s: AsyncSession, *, workspace_name: str = "Munshi Demo Traders Pv
     s.add_all([priya_p, arjun_p, neha_p, *vendors.values(), *customers.values()])
     await s.flush()
 
-    priya = User(workspace_id=W, email=f"priya@{email_domain}", display_name="Priya Sharma", role="finance_approver",
-                 password_hash=ph.hash(password), party_id=priya_p.id, preferred_language="hinglish")
+    # Demo email recipients come only from the allow-list (first -> Arjun, second -> Neha); never invented addresses.
+    allow = [e.strip() for e in os.getenv("EMAIL_ALLOWED_RECIPIENTS", "").split(",") if e.strip()] if email_domain == "munshi.demo" else []
+    priya = User(workspace_id=W, email=f"priya@{email_domain}", display_name="Priya Sharma", role="admin",
+                 password_hash=ph.hash(password), party_id=priya_p.id, preferred_language="hinglish",
+                 department="Finance", designation="Finance & HR Manager", start_date=date(2023, 6, 1))
+    s.add(priya)
+    await s.flush()
     arjun = User(workspace_id=W, email=f"arjun@{email_domain}", display_name="Arjun Mehta", role="employee",
-                 password_hash=ph.hash(password), party_id=arjun_p.id, preferred_language="english")
-    s.add_all([priya, arjun])
+                 password_hash=ph.hash(password), party_id=arjun_p.id, preferred_language="english",
+                 department="Sales", designation="Sales Executive", reports_to_id=priya.id, start_date=date(2024, 8, 12),
+                 notify_email=allow[0] if allow else None)
+    neha = User(workspace_id=W, email=f"neha@{email_domain}", display_name="Neha Iyer", role="employee",
+                password_hash=ph.hash(password), party_id=neha_p.id, preferred_language="english",
+                department="Sales", designation="Account Manager", reports_to_id=priya.id, start_date=date(2025, 2, 3),
+                notify_email=allow[1] if len(allow) > 1 else None)
+    s.add_all([arjun, neha])
 
     alloc = {"Travel": 50_000, "Office Supplies": 40_000, "IT & Cloud": 2_00_000, "Events": 30_000, "Logistics": 25_000, "Conveyance": 15_000}
     dept = {"Travel": "Sales", "Office Supplies": "Admin", "IT & Cloud": "Engineering", "Events": "Marketing", "Logistics": "Operations", "Conveyance": "Sales"}
@@ -151,7 +162,35 @@ async def seed(s: AsyncSession, *, workspace_name: str = "Munshi Demo Traders Pv
         s.add(Invoice(workspace_id=W, number=num, customer_party_id=customers[key].id, issue_date=issued, due_date=due,
                       amount_paise=amt * L, paid_paise=paid * L))
     await s.flush()
-    return {"workspace_id": W, "priya_id": priya.id, "arjun_id": arjun.id, "travel_line_id": lines["Travel"].id,
+
+    # ---- people ops (synthetic)
+    from app.models import LeaveRequest, Message, Policy
+    from app.services import people
+    for u in (priya, arjun, neha):
+        for code, (_, days) in people.LEAVE_TYPES.items():
+            await people.post_leave(s, W, u.id, code, "granted", days, "annual_grant", memo=f"{FY} grant")
+    await people.post_leave(s, W, arjun.id, "CL", "used", 3, "leave_approved", memo="Earlier leave this year")
+    await people.post_leave(s, W, neha.id, "SL", "used", 1, "leave_approved", memo="Earlier leave this year")
+    lr = LeaveRequest(workspace_id=W, ref="pending", user_id=neha.id, submitted_by=neha.id, leave_type="CL",
+                      start_date=date(2026, 11, 26), end_date=date(2026, 11, 27), days=2, reason="Family function")
+    s.add(lr)
+    await s.flush()
+    lr.ref = f"L{lr.id}"
+    await people.post_leave(s, W, neha.id, "CL", "reserved", 2, "leave_requested", source_id=lr.id)
+    for code, topic, title, body in [
+        ("HR-3.1", "leave", "Leave entitlement", "Every employee receives 12 days casual leave (CL), 8 days sick leave (SL) and 15 days earned leave (EL) per financial year (April-March). Leave is counted in working days; weekends are not counted. CL cannot exceed 3 consecutive days without manager approval in advance."),
+        ("HR-3.2", "leave", "Applying for leave", "Apply through Munshi at least 2 working days before casual or earned leave. Sick leave may be applied on the same day; more than 2 consecutive sick days need a medical certificate. Your manager approves; HR may approve when the manager is away."),
+        ("HR-3.3", "leave carry forward", "Carry forward", "Up to 10 days of unused earned leave carry forward to the next financial year. Casual and sick leave lapse on 31 March."),
+        ("FIN-2.1", "expenses reimbursement", "Travel and expense claims", "Submit claims with the original receipt within 30 days of the expense. Hotel stays are reimbursed up to Rs 5,000 per night in metro cities and Rs 3,500 elsewhere. Reimbursements are paid in the next weekly payment run after approval."),
+        ("HR-5.1", "working hours office", "Working hours", "Office hours are 9:30 to 18:30, Monday to Friday. Employees may work from home up to 2 days a week with manager agreement."),
+        ("HR-1.2", "onboarding joining", "Joining formalities", "New joiners share PAN, Aadhaar and bank details in the first week, acknowledge the leave, expense and code of conduct policies, and receive a laptop and email account on day one."),
+    ]:
+        s.add(Policy(workspace_id=W, code=code, topic=topic, title=title, body=body + " (Synthetic demo policy.)"))
+    s.add(Message(workspace_id=W, ref="M0", kind="announcement", channel="inbox", sender_id=priya.id, recipient_user_id=arjun.id,
+                  subject="Quarter-end expense deadline", body="Please submit all pending expense claims by 30 November.",
+                  status="delivered"))
+    await s.flush()
+    return {"workspace_id": W, "neha_id": neha.id, "neha_leave_ref": lr.ref, "priya_id": priya.id, "arjun_id": arjun.id, "travel_line_id": lines["Travel"].id,
             "reservation_id": rs.id, "arjun_party_id": arjun_p.id, "priya_party_id": priya_p.id, "neha_claim_ref": c.ref}
 
 

@@ -2,5 +2,29 @@
   "enabledPlugins": {
     "ecc@ecc": true,
     "superpowers@claude-plugins-official": false
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/tests-only-in-sonnet.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|SendMessage",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/fresh-sonnet-per-test-set.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
   }
 }
