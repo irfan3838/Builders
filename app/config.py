@@ -46,14 +46,22 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_refresh_token: str = ""
     calendar_timezone: str = "Asia/Kolkata"
+    # The ONE Purser login whose real Gmail + Calendar the refresh token above belongs to. Everyone else uses demo data.
+    google_linked_email: str = ""
+    # Flight search (SerpAPI Google Flights). Unset = flight search falls back to a labelled sample list.
+    serpapi_api_key: str = ""
     # Revenue FX: "ecb" fetches Frankfurter (ECB reference rates); "fixture" uses fixed quotes (tests, offline demo).
     fx_provider: str = "ecb"
 
     @field_validator("gmail_address", "gmail_app_password", "email_allowed_recipients", "google_client_id",
-                     "google_client_secret", "google_refresh_token", mode="before")
+                     "google_client_secret", "google_refresh_token", "google_linked_email", "serpapi_api_key", mode="before")
     @classmethod
     def _strip(cls, v):
         return v.strip() if isinstance(v, str) else v
+
+    @property
+    def flights_enabled(self) -> bool:
+        return bool(self.serpapi_api_key) and self.serpapi_api_key != "replace-me"
 
     @property
     def email_allowlist(self) -> set[str]:

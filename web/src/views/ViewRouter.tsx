@@ -4,7 +4,6 @@ import { ArrowRight, Check, CircleCheck, Clock, FileText, Plane, RotateCcw } fro
 import { ReactNode, useState } from "react";
 import { reveal } from "../animations/tokens";
 import { ChartCard } from "../ChartCard";
-import PurserComposer from "../components/assistant/PurserComposer";
 import PurserOrb from "../components/assistant/PurserOrb";
 import { useAssistant } from "../components/assistant/PurserVoiceController";
 import AnimatedCounter from "../components/shared/AnimatedCounter";
@@ -29,7 +28,6 @@ export function ViewFrame({ title, sub, actions, children }: { title: string; su
         </div>
         {children}
       </div>
-      <div style={{ padding: "0 40px 0 48px" }}><PurserComposer /></div>
     </>
   );
 }
@@ -293,6 +291,44 @@ function ReportsView() {
   );
 }
 
+// ---------------------------------------------------------------- Tasks + Helpdesk (employee self-service)
+
+function TasksView() {
+  const P = usePurser();
+  const { data, err, reload } = useLoad<any>("/api/tasks", P.bump);
+  return (
+    <ViewFrame title="Tasks" sub="Your to-dos and tasks assigned to you. Say “add a task …” or “done with T12”."
+      actions={<AskChip q="Add a task" />}>
+      {err ? <Failed err={err} retry={reload} /> : !data ? <Loading /> : data.tasks.length === 0 ? <div className="glass empty-state">No tasks.</div> : (
+        <Rows>{data.tasks.map((t: any, i: number) => (
+          <motion.li key={t.ref} variants={reveal} custom={i} className="row">
+            <span><span className="r-title" style={t.status === "done" ? { textDecoration: "line-through", opacity: .6 } : undefined}>{t.title}</span>
+              <div className="r-sub">{t.ref} · {t.priority} priority{t.assigned_by && t.assigned_by !== t.assignee ? ` · from ${t.assigned_by}` : ""}</div></span>
+            <span className="fine">{t.status === "done" ? "done" : t.due_on ? `due ${fmtDate(t.due_on)}` : "no date"}</span>
+          </motion.li>))}</Rows>
+      )}
+    </ViewFrame>
+  );
+}
+
+function HelpdeskView() {
+  const P = usePurser();
+  const { data, err, reload } = useLoad<any>("/api/tickets", P.bump);
+  return (
+    <ViewFrame title="Helpdesk" sub="IT, admin and facilities requests. Say “my laptop isn't charging” to raise one."
+      actions={<AskChip q="Raise a helpdesk ticket" />}>
+      {err ? <Failed err={err} retry={reload} /> : !data ? <Loading /> : data.tickets.length === 0 ? <div className="glass empty-state">No tickets.</div> : (
+        <Rows>{data.tickets.map((t: any, i: number) => (
+          <motion.li key={t.ref} variants={reveal} custom={i} className="row">
+            <span><span className="r-title">{t.title}</span>
+              <div className="r-sub">{t.ref} · {t.category} · {t.priority}{t.requester ? ` · ${t.requester}` : ""}{t.resolution ? ` · ${t.resolution}` : ""}</div></span>
+            <span className="fine">{t.status.replace("_", " ")}</span>
+          </motion.li>))}</Rows>
+      )}
+    </ViewFrame>
+  );
+}
+
 export function ViewRouter({ view }: { view: View }) {
   switch (view) {
     case "claims": return <ClaimsView />;
@@ -303,6 +339,8 @@ export function ViewRouter({ view }: { view: View }) {
     case "dashboards": return <DashboardsView />;
     case "reports": return <ReportsView />;
     case "mail": return <MailView />;
+    case "tasks": return <TasksView />;
+    case "helpdesk": return <HelpdeskView />;
     default: return null;
   }
 }

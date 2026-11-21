@@ -549,7 +549,7 @@ class OnboardEmployee:
         grants = ", ".join(f"{v[1]} {k}" for k, v in people.LEAVE_TYPES.items())
         fake = type("U", (), {"notify_email": args.get("personal_email")})()
         to, verdict = messaging.email_plan(fake)
-        mail = {"deliverable": f"welcome email to {to}", "not_on_allowlist": f"no email ({to} is not on the demo allow-list)",
+        mail = {"deliverable": f"welcome email to {to}", "not_on_allowlist": f"no email ({to} is not on the email allow-list)",
                 "email_not_configured": "no email (email not configured)", "no_email": "no personal email given"}[verdict]
         lines = [f"Create employee login for {name} <{email}>: {args.get('designation') or 'Employee'}, "
                  f"{args.get('department') or 'unassigned'} department, starting {_fmt_date(start)}.",
@@ -734,14 +734,14 @@ class ScheduleMeeting:
                  "With: " + ", ".join(who) + "."]
         if description:
             lines.append(f"Notes: {description}")
-        if get_settings().calendar_enabled:
+        if get_settings().calendar_enabled and actor.uses_google:
             lines.append("Google Calendar event with a Google Meet link; Google emails the invite to "
                          + (", ".join(invite) if invite else "no one (no email addresses on file)") + ".")
             no_mail = [u.display_name for u in users if not u.notify_email]
             if no_mail:
                 lines.append(f"No email on file for {', '.join(no_mail)}: they get the link in the Purser inbox only.")
         else:
-            lines.append("Google Calendar is not connected: the meeting is recorded in Purser without a Meet link or invites.")
+            lines.append("Saved in the Purser calendar and the attendees' Purser inboxes (Google Calendar is connected for the linked account only, so no Meet link).")
         return Plan("Schedule interview" if kind == "interview" else "Schedule meeting", lines,
                     f"Schedule '{title}' on {calendar.when_text(probe)} with {', '.join(who[:3])}"
                     + (f" and {len(who) - 3} more" if len(who) > 3 else "") + "?", [])
@@ -751,7 +751,7 @@ class ScheduleMeeting:
 
         from app.config import get_settings
         title, kind, start, end, minutes, tz, users, guests, invite, description = await _meeting_inputs(s, actor, args)
-        enabled = get_settings().calendar_enabled
+        enabled = get_settings().calendar_enabled and actor.uses_google
         m = Meeting(workspace_id=actor.workspace_id, ref="pending", kind=kind, title=title, description=description,
                     start_at=start, end_at=end, timezone=tz, organizer_id=actor.user_id, attendee_user_ids=[u.id for u in users],
                     guest_emails=invite, google_event_id=uuid.uuid4().hex, status="queued" if enabled else "skipped",
@@ -762,7 +762,7 @@ class ScheduleMeeting:
         await audit.record(s, actor, f"{kind}.scheduled", record_type="meeting", record_id=m.id, record_ref=m.ref,
                            after={"title": title, "start": start.isoformat(), "minutes": minutes, "guests": len(invite),
                                   "attendees": len(users), "status": m.status}, receipt_id=receipt_id)
-        tail = "creating the Google Meet link and sending invites" if enabled else "recorded without a Meet link (calendar not connected)"
+        tail = "creating the Google Meet link and sending invites" if enabled else "saved in the Purser calendar"
         return Execution(f"{'Interview' if kind == 'interview' else 'Meeting'} {m.ref} '{title}' scheduled; {tail}.",
                          [{"type": "meeting", "ref": m.ref, "status": m.status, "guests": len(invite)}])
 
@@ -785,3 +785,18 @@ ACTIONS.update({a.kind: a for a in _REVENUE_ACTIONS})
 from app.services.contract_actions import CONTRACT_ACTIONS as _CONTRACT_ACTIONS  # noqa: E402
 
 ACTIONS.update({a.kind: a for a in _CONTRACT_ACTIONS})
+
+# Gmail + Google Calendar changes on the linked account (send/reply, inbox housekeeping, move/cancel an event).
+from app.services.google_actions import GOOGLE_ACTIONS as _GOOGLE_ACTIONS  # noqa: E402
+
+ACTIONS.update({a.kind: a for a in _GOOGLE_ACTIONS})
+
+# Travel: simulated flight booking with a confirmation email (and a calendar hold for the linked Google account).
+from app.services.travel.booking import TRAVEL_ACTIONS as _TRAVEL_ACTIONS  # noqa: E402
+
+ACTIONS.update({a.kind: a for a in _TRAVEL_ACTIONS})
+
+# Tasks assigned to others and helpdesk tickets (own to-dos are saved directly by the tools).
+from app.services.work import WORK_ACTIONS as _WORK_ACTIONS  # noqa: E402
+
+ACTIONS.update({a.kind: a for a in _WORK_ACTIONS})

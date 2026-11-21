@@ -32,8 +32,8 @@ TABLE = {"invoice": ("invoices", Invoice), "client": ("parties", Party)}
 
 
 def require_view(actor: Actor) -> None:
-    if not actor.is_approver:
-        raise DomainError(FORBIDDEN, "Revenue is visible to finance only.")
+    if not actor.can_read_finance:
+        raise DomainError(FORBIDDEN, "Revenue is visible to finance and leadership only.")
 
 
 def require_edit(actor: Actor) -> None:

@@ -15,6 +15,10 @@ const storeHandsFree = (on: boolean) => { try { localStorage.setItem(HANDSFREE_K
 export const ACCEPT = ["application/pdf", "image/jpeg", "image/png", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
 export const ACCEPT_ATTR = "application/pdf,image/jpeg,image/png,.docx," + ACCEPT[3];
 const MAX_BYTES = 25 * 1024 * 1024;
+// A voice turn the server never closes (dropped stream, crashed task) must not lock the composer forever.
+// The server's own agent timeout is 90 s.
+const VOICE_TURN_SAFETY_MS = 100_000;
+const CONNECT_RETRIES = [0, 1500, 4000];
 
 export type VoiceMode = "off" | "asleep" | "waking" | "connecting" | "idle" | "listening" | "speaking" | "error" | "denied";
 
@@ -30,6 +34,9 @@ type Assistant = {
   cancel: () => void;
   upload: (files: File[], from?: Element | null) => void;
   lastFailed: string | null;
+  /** Set when the conversation could not be opened; the composer shows it inline with a retry. */
+  connError: string | null;
+  reconnect: () => void;
 };
 
 const AssistantContext = createContext<Assistant | null>(null);
@@ -61,7 +68,10 @@ export function PurserVoiceController({ children }: { children: ReactNode }) {
   const idleTimer = useRef<number | undefined>(undefined);
   const abort = useRef<AbortController | null>(null);
   const turnsInFlight = useRef(0);
-  const { setBaseOrb, say, addCards, flashOrb, toast, refresh, busy, setSuggestions } = P;
+  const turnSafety = useRef<number | undefined>(undefined);
+  const [connError, setConnError] = useState<string | null>(null);
+  const [connEpoch, setConnEpoch] = useState(0);
+  const { setBaseOrb, say, addCards, flashOrb, toast, refresh, busy, setSuggestions, setChoice } = P;
 
   // ---- audio level for the orb: mic while listening, Purser's voice while speaking
   const audio = useRef<{ ctx?: AudioContext; an?: AnalyserNode; src?: MediaStreamAudioSourceNode; stream?: MediaStream; buf: Uint8Array<ArrayBuffer> }>({ buf: new Uint8Array(256) });
@@ -93,30 +103,73 @@ export function PurserVoiceController({ children }: { children: ReactNode }) {
     setBaseOrb(sending ? "processing" : map[voice]);
   }, [voice, sending, setBaseOrb]);
 
+  // Release every voice turn the client still counts as open (the matching assistant_turn may never arrive).
+  const clearVoiceTurns = useCallback(() => {
+    clearTimeout(turnSafety.current);
+    busy.current = Math.max(0, busy.current - turnsInFlight.current);
+    turnsInFlight.current = 0;
+    if (!abort.current) setSending(false);
+  }, [busy]);
+
   // ---- conversation + server events
   useEffect(() => {
     let es: EventSource | null = null;
     let closed = false;
-    const open = () => api.post<{ conversation_id: string }>("/api/conversations").then(({ conversation_id }) => {
-      if (closed) return;
-      setConversation(conversation_id); setReady(true);
-      es = new EventSource(`/api/events?conversation_id=${conversation_id}`);
-      es.onmessage = (m) => {
-        const ev = JSON.parse(m.data);
-        if (ev.type === "card") addCards([ev]);
-        else if (ev.type === "user_turn") { setSuggestions([]); turnsInFlight.current++; busy.current++; setSending(true); }
-        else if (ev.type === "assistant_turn") {
-          turnsInFlight.current = Math.max(0, turnsInFlight.current - 1);
-          busy.current = Math.max(0, busy.current - 1);
-          if (ev.text) say("purser", ev.text);
-          if (!turnsInFlight.current && !abort.current) setSending(false);
-          refresh();
+    const open = async () => {
+      let lastErr: any = null;
+      for (const wait of CONNECT_RETRIES) {
+        if (wait) await new Promise((r) => setTimeout(r, wait));
+        if (closed) return;
+        try {
+          const { conversation_id } = await api.post<{ conversation_id: string }>("/api/conversations");
+          if (closed) return;
+          setConversation(conversation_id); setReady(true); setConnError(null);
+          es = new EventSource(`/api/events?conversation_id=${conversation_id}`);
+          // The browser reconnects by itself, but events sent while disconnected are lost: release open voice turns.
+          es.onerror = () => { if (turnsInFlight.current) clearVoiceTurns(); };
+          es.onmessage = (m) => {
+            const ev = JSON.parse(m.data);
+            if (ev.type === "card") addCards([ev]);
+            else if (ev.type === "user_turn") {
+              setSuggestions([]); turnsInFlight.current++; busy.current++; setSending(true);
+              setChoice((c) => (c && !c.answered ? { ...c, answered: String(ev.text || "").slice(0, 40) } : c));  // a spoken answer
+              clearTimeout(turnSafety.current);
+              turnSafety.current = window.setTimeout(clearVoiceTurns, VOICE_TURN_SAFETY_MS);
+            } else if (ev.type === "assistant_turn") {
+              if (turnsInFlight.current > 0) { turnsInFlight.current--; busy.current = Math.max(0, busy.current - 1); }
+              if (!turnsInFlight.current) clearTimeout(turnSafety.current);
+              // In a live voice session the spoken transcript already captions this reply; showing ev.text too repeats it.
+              if (ev.text && !live.current?.active) say("purser", ev.text);
+              if (!turnsInFlight.current && !abort.current) setSending(false);
+              refresh();
+            }
+          };
+          return;
+        } catch (e: any) {
+          lastErr = e;
+          if (e instanceof ApiError && e.status === 401) { window.location.reload(); return; }  // session gone: back to sign-in
         }
-      };
-    }).catch((e) => { if (!closed) { toast("error", `Could not start a Purser session: ${e.message}`, { label: "Retry", run: open }); } });
+      }
+      if (!closed) { setReady(false); setConnError(`Can't reach Purser (${lastErr?.message || "network error"}).`); }
+    };
     open();
-    return () => { closed = true; es?.close(); };
-  }, [addCards, say, refresh, toast, busy, setSuggestions]);
+    return () => { closed = true; es?.close(); clearTimeout(turnSafety.current); };
+  }, [addCards, say, refresh, busy, setSuggestions, setChoice, clearVoiceTurns, connEpoch]);
+
+  const reconnect = useCallback(() => { setConnError(null); setConnEpoch((n) => n + 1); }, []);
+
+  // ---- location (flight origin): asked once after sign-in, refreshed at most hourly; never required
+  useEffect(() => {
+    if (!ready || !("geolocation" in navigator)) return;
+    let last = 0;
+    try { last = Number(localStorage.getItem("purser.loc.at") || 0); } catch { /* private mode */ }
+    if (Date.now() - last < 3_600_000) return;
+    navigator.geolocation.getCurrentPosition((p) => {
+      api.post("/api/me/location", { lat: p.coords.latitude, lon: p.coords.longitude })
+        .then(() => { try { localStorage.setItem("purser.loc.at", String(Date.now())); } catch { /* ignore */ } })
+        .catch(() => {});
+    }, () => {}, { maximumAge: 600_000, timeout: 10_000 });
+  }, [ready]);
 
   // ---- live voice session + wake word
   const sleep = useCallback(() => {
@@ -139,7 +192,7 @@ export function PurserVoiceController({ children }: { children: ReactNode }) {
     setVoice("waking");
     if (rest) say("user", rest);
     const v = new LiveVoice((s) => {
-      if (s === "idle") { live.current = null; sleep(); return; }
+      if (s === "idle") { live.current = null; clearVoiceTurns(); sleep(); return; }
       if (s === "error") {
         const denied = v.denied;
         live.current = null;
@@ -150,12 +203,12 @@ export function PurserVoiceController({ children }: { children: ReactNode }) {
         return;
       }
       setVoice(s);
-    }, (who, d) => say(who, d, true));
+    }, (who, d, fresh) => say(who, d, !fresh));
     v.onActivity = touch;
     live.current = v;
     await v.start(rest);
     touch();
-  }, [say, sleep, touch, flashOrb, toast]);
+  }, [say, sleep, touch, flashOrb, toast, clearVoiceTurns]);
 
   useEffect(() => {
     wake.current = new WakeWord((rest) => wakeUp(rest), () => {
@@ -221,7 +274,8 @@ export function PurserVoiceController({ children }: { children: ReactNode }) {
     }
   }, [ready, say, fly, addCards, refresh, flashOrb, busy, setSuggestions]);
 
-  const cancel = useCallback(() => { abort.current?.abort(); }, []);
+  // Esc / the stop button: abort a typed turn, and stop waiting on any voice turn the server has not closed.
+  const cancel = useCallback(() => { abort.current?.abort(); if (turnsInFlight.current) clearVoiceTurns(); }, [clearVoiceTurns]);
 
   // ---- uploads: real byte progress, then the agent reads the document (scan line) until the server answers
   const upload = useCallback((files: File[], from?: Element | null) => {
@@ -261,7 +315,7 @@ export function PurserVoiceController({ children }: { children: ReactNode }) {
   }, [P, fly, say, touch, addCards, refresh, flashOrb, toast, busy]);
 
   return (
-    <AssistantContext.Provider value={{ ready, voice, handsFree, setHandsFree, toggleVoice, level, sending, send, cancel, upload, lastFailed }}>
+    <AssistantContext.Provider value={{ ready, voice, handsFree, setHandsFree, toggleVoice, level, sending, send, cancel, upload, lastFailed, connError, reconnect }}>
       {children}
     </AssistantContext.Provider>
   );

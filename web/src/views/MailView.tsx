@@ -9,6 +9,7 @@ import ConfirmationDialog from "../components/shared/ConfirmationDialog";
 import { useFx } from "../components/shared/FxLayer";
 import { useLoad, usePurser } from "../state/store";
 import { ViewFrame } from "./ViewRouter";
+import GmailPane from "./GmailPane";
 
 type Draft = { id: string; to: number[]; subject: string; body: string; email: boolean; saved: string };
 const DRAFTS_KEY = "purser.mail.drafts";
@@ -17,6 +18,27 @@ const loadDrafts = (): Draft[] => { try { return JSON.parse(localStorage.getItem
 const when = (iso: string) => new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 export default function MailView() {
+  const P = usePurser();
+  const [src, setSrc] = useState<"gmail" | "purser">(P.me.google ? "gmail" : "purser");
+  if (!P.me.google) return <PurserMail />;
+  return (
+    <ViewFrame title="Mail" sub={src === "gmail" ? "Your Gmail, live. Ask Purser to summarise, reply or tidy up." : "Messages inside Purser."}
+      actions={<div className="fl-tabs" role="tablist" aria-label="Mailbox" style={{ display: "flex", gap: 6, margin: 0 }}>
+        <button role="tab" aria-selected={src === "gmail"} className={`fl-tab ${src === "gmail" ? "on" : ""}`} onClick={() => setSrc("gmail")}>Gmail</button>
+        <button role="tab" aria-selected={src === "purser"} className={`fl-tab ${src === "purser" ? "on" : ""}`} onClick={() => setSrc("purser")}>Purser inbox</button>
+      </div>}>
+      {src === "gmail" ? <GmailPane /> : <PurserMail embedded />}
+    </ViewFrame>
+  );
+}
+
+/** The Purser inbox either owns the page (no Gmail) or sits inside the Gmail/Purser tab frame. */
+function MailFrame({ embedded, sub, actions, children }: { embedded: boolean; sub: string; actions: ReactElement; children: React.ReactNode }) {
+  if (!embedded) return <ViewFrame title="Mail" sub={sub} actions={actions}>{children}</ViewFrame>;
+  return <><div className="view-head" style={{ marginBottom: 14 }}><span className="spacer" />{actions}</div>{children}</>;
+}
+
+function PurserMail({ embedded = false }: { embedded?: boolean }) {
   const P = usePurser();
   const { fly } = useFx();
   const reduced = useReducedMotion();
@@ -106,7 +128,7 @@ export default function MailView() {
   ];
 
   return (
-    <ViewFrame title="Mail" sub="Your Purser inbox, announcements and messages. Email goes only to allow-listed demo addresses."
+    <MailFrame embedded={embedded} sub="Your Purser inbox, announcements and messages."
       actions={<div className="tabs" role="tablist">{tabs.map(([v, l, icon]) => (
         <button key={v} role="tab" aria-selected={tab === v} className="tab" onClick={() => { setTab(v); setSel(null); }}>
           {tab === v && <motion.span layoutId="mail-tab" className="tab-pill" transition={{ type: "spring", stiffness: 420, damping: 34 }} />}
@@ -183,6 +205,6 @@ export default function MailView() {
       </div>
       <ConfirmationDialog open={!!dialog} title={dialog?.title ?? "Send message"} lines={dialog?.lines ?? []} confirmLabel="Send now" busy={false}
         onConfirm={confirmSend} onCancel={() => { if (dialog) api.post(`/api/proposals/${dialog.id}/cancel`).catch(() => {}); setDialog(null); }} />
-    </ViewFrame>
+    </MailFrame>
   );
 }

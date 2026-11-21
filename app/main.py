@@ -23,6 +23,7 @@ from app.config import get_settings  # noqa: E402
 from app.errors import DomainError  # noqa: E402
 from app.models import Conversation, Proposal, Receipt  # noqa: E402
 from app.money import format_inr  # noqa: E402
+from app.rbac import http_finance_read  # noqa: E402
 from app.services import budget, intake, proposals, records, storage  # noqa: E402
 
 logging.basicConfig(level=get_settings().log_level.upper(), format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -99,7 +100,58 @@ async def logout(response: Response) -> dict:
 
 @app.get("/api/me")
 async def me(request: Request, actor: Actor = auth.ActorDep) -> dict:
-    return {"id": actor.user_id, "name": actor.display_name, "role": actor.role, "csrf": await auth.current_csrf(request)}
+    return {"id": actor.user_id, "name": actor.display_name, "role": actor.role, "csrf": await auth.current_csrf(request),
+            "google": actor.uses_google}
+
+
+def _gmail_actor(actor: Actor) -> None:
+    if not actor.uses_google:
+        raise HTTPException(403, "Gmail is connected only for the linked account")
+
+
+@app.get("/api/gmail")
+async def gmail_list(actor: Actor = auth.ActorDep, q: str = "in:inbox", max: int = 15) -> dict:
+    """The linked account's Gmail (read-only view; changes go through Purser's propose -> confirm)."""
+    from app.services.google import gmail
+    from app.services.google.auth import GoogleError
+    _gmail_actor(actor)
+    try:
+        return {"query": q, "messages": await gmail.search(q[:200], max)}
+    except GoogleError as e:
+        raise HTTPException(502, str(e)) from None
+
+
+@app.get("/api/gmail/thread/{thread_id}")
+async def gmail_thread(thread_id: str, actor: Actor = auth.ActorDep) -> dict:
+    from app.services.google import gmail
+    from app.services.google.auth import GoogleError
+    _gmail_actor(actor)
+    if not thread_id.isalnum() or len(thread_id) > 40:
+        raise HTTPException(400, "bad thread id")
+    try:
+        t = await gmail.get_thread(thread_id)
+    except GoogleError as e:
+        raise HTTPException(502, str(e)) from None
+    return {"thread_id": thread_id, "messages": [{k: m[k] for k in ("id", "from", "from_email", "to", "subject", "date", "body", "unread")}
+                                                 for m in t["messages"]]}
+
+
+class LocationIn(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+
+
+@app.post("/api/me/location")
+async def save_location(body: LocationIn, actor: Actor = auth.ActorDep) -> dict:
+    """The browser's location, shared by the user, so 'fly to Mumbai' can start from the nearest airport."""
+    from datetime import UTC, datetime
+
+    from app.models import User
+    from app.services.travel import airports
+    async with db.session_scope() as s:
+        u = await s.get(User, actor.user_id)
+        u.last_lat, u.last_lon, u.last_loc_at = body.lat, body.lon, datetime.now(UTC)
+    return {"nearest_airport": airports.nearest(body.lat, body.lon)}
 
 
 @app.post("/api/conversations", status_code=201)
@@ -203,7 +255,7 @@ async def cancel_button(proposal_id: str, actor: Actor = auth.ActorDep) -> dict:
 async def get_receipt(receipt_id: int, actor: Actor = auth.ActorDep) -> dict:
     async with db.session_scope() as s:
         r = (await s.execute(select(Receipt).where(Receipt.id == receipt_id, Receipt.workspace_id == actor.workspace_id))).scalars().first()
-        if r is None or (not actor.is_approver and r.actor_id != actor.user_id):
+        if r is None or (not actor.can_read_finance and r.actor_id != actor.user_id):
             raise HTTPException(404, "Receipt not found")
         p = await s.get(Proposal, r.proposal_id)
         return {"id": r.id, "ref": r.ref, "summary": r.summary, "effects": r.effects, "confirmed_via": r.confirmed_via,
@@ -236,6 +288,7 @@ async def document_detail(document_id: int, actor: Actor = auth.ActorDep) -> dic
 
 @app.get("/api/budget/lines/{line_id}")
 async def budget_line(line_id: int, actor: Actor = auth.ActorDep) -> dict:
+    http_finance_read(actor)
     async with db.session_scope() as s:
         line = await budget.get_line(s, actor.workspace_id, line_id=line_id)
         p = await budget.position(s, actor.workspace_id, line.id)
@@ -251,6 +304,7 @@ async def budget_line(line_id: int, actor: Actor = auth.ActorDep) -> dict:
 @app.get("/api/budget/lines/{line_id}/months")
 async def budget_line_months(line_id: int, actor: Actor = auth.ActorDep) -> dict:
     """The FY month by month for one line: budget, actual, remaining, status, closed, pacing (current month)."""
+    http_finance_read(actor)
     from app.services import budget_months as bm
     from app.services.records import today_ist
     today = today_ist()
@@ -289,7 +343,7 @@ async def record_detail(ref: str, actor: Actor = auth.ActorDep) -> dict:
 @app.get("/api/audit")
 async def audit_feed(actor: Actor = auth.ActorDep, ref: str | None = None) -> dict:
     from app.models import AuditEvent, User
-    if not actor.is_approver:
+    if not actor.can_read_finance:
         raise HTTPException(403, "Finance approvers only")
     async with db.session_scope() as s:
         q = select(AuditEvent, User.display_name).join(User, User.id == AuditEvent.actor_id, isouter=True).where(
@@ -463,7 +517,7 @@ async def receipt_deliveries(receipt_id: int, actor: Actor = auth.ActorDep) -> d
     from app.models import Message, User
     async with db.session_scope() as s:
         r = (await s.execute(select(Receipt).where(Receipt.id == receipt_id, Receipt.workspace_id == actor.workspace_id))).scalars().first()
-        if r is None or (not actor.is_approver and not actor.is_hr and r.actor_id != actor.user_id):
+        if r is None or (not actor.can_read_finance and not actor.is_hr and r.actor_id != actor.user_id):
             raise HTTPException(404, "Receipt not found")
         rows = (await s.execute(select(Message, User.display_name).join(User, User.id == Message.recipient_user_id, isouter=True)
                                 .where(Message.receipt_id == r.id).order_by(Message.id))).all()

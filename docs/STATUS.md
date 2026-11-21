@@ -2,7 +2,7 @@
 
 Updated 2026-11-21 (IST). Branch `build/munshi-mvp`. Freeze **Sun 2026-11-22 14:00 IST**.
 Plans: `docs/PLAN_v4.md` (finance core), `docs/PLAN_v5_people_ops.md` (HR scope).
-Deployment status: **LOCAL ONLY**. Nothing is provisioned on AWS.
+Deployment status: **DEPLOYED** (us-west-2, https://d342yicbppf96p.cloudfront.net, image `e85f117-demodata` with the demo dataset). Spoken golden path not yet verified live.
 
 ---
 
@@ -95,6 +95,14 @@ Deployment status: **LOCAL ONLY**. Nothing is provisioned on AWS.
 ### 1.10 Commits
 - `9b3416b feat: Purser voice finance agent MVP (local)`, the checkpoint commit.
 - **The HR round is uncommitted** (see section 2.1).
+
+### Round 6 (2026-11-21 night), deployed as image `bfe0e8f-r6b` (task def `munshi:7`)
+- Logins: irfmed38@gmail.com (admin, real Gmail + Calendar), irfan@dzruptiv.ai (CEO, read-only), ia383813@gmail.com (employee). Added with `scripts/aws_run_task.sh seed-roles`.
+- Login briefing per role; Focus layout (one composer, role-filtered sidebar); English by default; composer no longer locks up.
+- Chart MCQ clarifications (max 3, then always render); flights + hotels (SerpAPI) with whole-trip approval and payment hand-off to the airline / hotel site; admin can book for employees and email the itinerary.
+- Gmail mail screen and mail/meeting tools (send/reply/archive/label/reschedule/cancel via propose then confirm); tasks and helpdesk tickets.
+- Verified live: health, 3 logins + briefings, employee 403 on budget/revenue, admin Gmail 200. Not yet verified live: Gmail send/archive, meeting reschedule/cancel, trip booking on AWS.
+- Gates: RBAC 34/34 new checks pass; stale expectations updated; trips and briefing/Gmail/flights gates were still running at deploy time.
 
 ---
 
@@ -230,6 +238,10 @@ What is built:
   - the ALB is not reachable directly.
 - [x] Seeded the synthetic demo data with `SEED_ADMIN_NAME="Irfan" scripts/aws_run_task.sh seed-reset` (image `e3d276e-seedname`; the user chose to keep `munshi-demo`).
   - Admin login: `irfan@munshi.demo`. Arjun and Neha are unchanged. Local and tests keep Priya as the default.
+- [x] 2026-11-21: **demo dataset** (`seed/demo_data.py`, `--demo` flag; tests keep the plain seed). Image `e85f117-demodata` (HEAD + uncommitted demo seed), task def `munshi:3`, contracts migration applied on RDS, reseeded with `SEED_ADMIN_NAME="Irfan" scripts/aws_run_task.sh seed-demo`.
+  - Logins now use `@purser.demo` (renamed seed): admin `irfan@purser.demo`; every employee is `first.last@purser.demo` (e.g. `rohan.kulkarni@purser.demo`), same demo password as before.
+  - 26 users in 7 departments (incl. `ananya.desai` finance_approver, `meera.joshi` hr_admin, invited joiner Sana Qureshi), 15 leave requests (5 pending), 12 budget lines (6 new: Marketing, Software & SaaS, Professional Fees, Rent & Utilities, Recruitment & Training, Client Entertainment; Jul-Sep closed), 18 vendors / 27 bills (paid, approved-unpaid incl. overdue rent, awaiting approval, 1 rejected), 13 claims, 13 clients / 41 invoices (USD + INR, monthly, quarterly arrears, ended, one-off), 8 contracts (CloudNest renewal notice 1 Dec), 48 inbox messages, 4 reminders.
+  - Live check: login OK; revenue received ₹15,32,220 / outstanding ₹15,96,300 / overdue ₹9,85,150 / to raise ₹23,66,850 (same as local).
   - Live login verified. The revenue overview matches local: ₹6,48,550 outstanding, ₹3,40,550 overdue.
 - [ ] Gate: the spoken golden path on the live URL.
 - Note: `d29t355negkoac.cloudfront.net` (E10FB7XHWO0D0V, EC2 origin) is a Workshop Studio distribution, not ours. Leave it alone.

@@ -385,7 +385,7 @@ def _claims(a: Actor, today: date) -> Compiled:
     emp = aliased(Party)
     where = [Claim.workspace_id == a.workspace_id, BudgetLine.workspace_id == a.workspace_id]
     note = None
-    if not a.is_approver:  # same rule as records.claim_by_ref
+    if not a.can_read_finance:  # same rule as records.claim_by_ref
         where.append(or_(Claim.beneficiary_party_id == a.party_id, Claim.submitter_id == a.user_id))
         note = "your own claims only"
     return Compiled(
@@ -486,7 +486,7 @@ SOURCES: dict[str, Source] = {
     "receivables": Source("Receivables (customer invoices)", "invoices", True, _receivables),
     "payables": Source("Payables (vendor bills)", "bills", True, _payables),
     "claims": Source("Expense claims", "claims", False, _claims),
-    "budget": Source("Budget ledger", "budget lines", False, _budget),
+    "budget": Source("Budget ledger", "budget lines", True, _budget),
     "budget_flows": Source("Budget changes (transfers, top-ups, reductions)", "changes", True, _budget_flows),
     "contracts": Source("Contracts and liabilities", "contracts", True, _contracts),
 }
@@ -497,7 +497,7 @@ def options(actor: Actor) -> dict:
     today = today_ist()
     out = []
     for key, src in SOURCES.items():
-        if src.approver_only and not actor.is_approver:
+        if src.approver_only and not actor.can_read_finance:
             continue
         c = src.compile(actor, today)
         out.append({
@@ -572,7 +572,7 @@ def chart_problem(spec: ChartSpec) -> str | None:
 def validate(spec: ChartSpec, actor: Actor, today: date) -> tuple[str, Compiled]:
     key = _source_for(spec)
     src = SOURCES[key]
-    if src.approver_only and not actor.is_approver:
+    if src.approver_only and not actor.can_read_finance:
         raise DomainError(FORBIDDEN, f"{src.label} are visible to finance approvers only.")
     c = src.compile(actor, today)
     allowed = sorted(c.dims)

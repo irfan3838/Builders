@@ -11,7 +11,8 @@ import boto3
 
 REGION = "us-west-2"
 MAP = {"OPENAI_API_KEY": "munshi/openai-api-key", "GMAIL_APP_PASSWORD": "munshi/gmail-app-password",
-       "GOOGLE_CLIENT_SECRET": "munshi/google-client-secret", "GOOGLE_REFRESH_TOKEN": "munshi/google-refresh-token"}
+       "GOOGLE_CLIENT_SECRET": "munshi/google-client-secret", "GOOGLE_REFRESH_TOKEN": "munshi/google-refresh-token",
+       "SERPAPI_API_KEY": "munshi/serpapi-api-key"}
 
 
 def main() -> None:

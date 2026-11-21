@@ -866,7 +866,11 @@ async def test_options_by_role(seeded):
     admin = {s["source"]: s for s in charts.options(priya)["sources"]}
     assert {"budget_flows", "contracts", "receivables", "payables", "claims", "budget"} <= set(admin)
     emp = {s["source"] for s in charts.options(arjun)["sources"]}
-    assert "budget_flows" not in emp and "contracts" not in emp and "budget" in emp and "claims" in emp
+    assert "budget_flows" not in emp and "contracts" not in emp and "claims" in emp
+    assert "budget" not in emp  # budget source is finance-only now (round 6)
+    import dataclasses
+    ceo = {s["source"] for s in charts.options(dataclasses.replace(priya, role="ceo"))["sources"]}
+    assert set(admin) <= ceo  # CEO (can_read_finance) sees every source
     assert [m["name"] for m in admin["budget_flows"]["measures"]] == ["budget_moved"]
     assert {m["name"] for m in admin["contracts"]["measures"]} == {"liability_count", "capped_liability_amount", "contract_count"}
     dims = {s: {d["name"] for d in admin[s]["dimensions"]} for s in admin}

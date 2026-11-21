@@ -32,13 +32,13 @@ async def claim_by_ref(s: AsyncSession, actor: Actor, ref: str, *, for_update: b
     c = (await s.execute(q)).scalars().first()
     if c is None:
         raise _not_found(f"Claim {ref}")
-    if not actor.is_approver and c.beneficiary_party_id != actor.party_id and c.submitter_id != actor.user_id:
+    if not actor.can_read_finance and c.beneficiary_party_id != actor.party_id and c.submitter_id != actor.user_id:
         raise _not_found(f"Claim {ref}")
     return c
 
 
 async def bill_by_ref(s: AsyncSession, actor: Actor, ref: str, *, for_update: bool = False) -> Bill:
-    if not actor.is_approver:
+    if not actor.can_read_finance:
         raise _not_found(f"Bill {ref}")
     q = select(Bill).where(Bill.workspace_id == actor.workspace_id, func.upper(Bill.ref) == ref.strip().upper())
     if for_update:
@@ -70,7 +70,7 @@ async def document(s: AsyncSession, actor: Actor, document_id: int, *, for_updat
     if for_update:
         q = q.with_for_update()
     d = (await s.execute(q)).scalars().first()
-    if d is None or (not actor.is_approver and d.uploader_id != actor.user_id):
+    if d is None or (not actor.can_read_finance and d.uploader_id != actor.user_id):
         raise _not_found(f"Document {document_id}")
     return d
 

@@ -15,9 +15,23 @@ from sqlalchemy import and_, func, or_, select
 from app import auth, db
 from app.actor import Actor
 from app.errors import DomainError
-from app.models import (Bill, BudgetLine, Claim, CompanyPayment, Document, Message, Party, Proposal, Receipt, Reservation,
-                        Settlement, Trip, User)
+from app.models import (
+    Bill,
+    BudgetLine,
+    Claim,
+    CompanyPayment,
+    Document,
+    Message,
+    Party,
+    Proposal,
+    Receipt,
+    Reservation,
+    Settlement,
+    Trip,
+    User,
+)
 from app.money import format_inr
+from app.rbac import http_finance_read
 from app.services import budget, intake, proposals, records
 
 router = APIRouter()
@@ -166,7 +180,7 @@ async def _line_names(s, ws: int) -> dict[int, str]:
 async def list_claims(actor: Actor = auth.ActorDep, state: str | None = None) -> dict:
     async with db.session_scope() as s:
         q = select(Claim).where(Claim.workspace_id == actor.workspace_id)
-        if not actor.is_approver:
+        if not actor.can_read_finance:
             q = q.where(or_(Claim.beneficiary_party_id == actor.party_id, Claim.submitter_id == actor.user_id))
         if state:
             q = q.where(Claim.state == state)
@@ -181,7 +195,7 @@ async def list_claims(actor: Actor = auth.ActorDep, state: str | None = None) ->
 
 @router.get("/api/bills")
 async def list_bills(actor: Actor = auth.ActorDep) -> dict:
-    if not actor.is_approver:
+    if not actor.can_read_finance:
         raise HTTPException(403, "Finance approvers only")
     async with db.session_scope() as s:
         rows = (await s.execute(select(Bill).where(Bill.workspace_id == actor.workspace_id).order_by(Bill.business_date.desc()).limit(50))).scalars().all()
@@ -197,7 +211,7 @@ async def list_bills(actor: Actor = auth.ActorDep) -> dict:
 async def list_payments(actor: Actor = auth.ActorDep) -> dict:
     """Recorded settlements (money moved outside Purser), company-card payments, and approved-but-unpaid items.
     Purser never moves money: 'awaiting_payment' means approved, not paid."""
-    if not actor.is_approver:
+    if not actor.can_read_finance:
         raise HTTPException(403, "Finance approvers only")
     async with db.session_scope() as s:
         st = (await s.execute(select(Settlement).where(Settlement.workspace_id == actor.workspace_id).order_by(Settlement.business_date.desc()).limit(30))).scalars().all()
@@ -221,6 +235,7 @@ async def list_payments(actor: Actor = auth.ActorDep) -> dict:
 
 @router.get("/api/budget/lines")
 async def list_budget_lines(actor: Actor = auth.ActorDep) -> dict:
+    http_finance_read(actor)
     async with db.session_scope() as s:
         lines = (await s.execute(select(BudgetLine).where(BudgetLine.workspace_id == actor.workspace_id).order_by(BudgetLine.category))).scalars().all()
         out = []
@@ -235,7 +250,7 @@ async def list_budget_lines(actor: Actor = auth.ActorDep) -> dict:
 async def list_trips(actor: Actor = auth.ActorDep) -> dict:
     async with db.session_scope() as s:
         q = select(Trip).where(Trip.workspace_id == actor.workspace_id)
-        if not actor.is_approver:
+        if not actor.can_read_finance:
             q = q.where(Trip.employee_party_id == actor.party_id)
         trips = (await s.execute(q.order_by(Trip.start_date.desc()))).scalars().all()
         names = await _party_names(s, {t.employee_party_id for t in trips})
@@ -252,6 +267,31 @@ async def list_trips(actor: Actor = auth.ActorDep) -> dict:
                                         for r in res if r.trip_id == t.id]} for t in trips]}
 
 
+@router.get("/api/briefing")
+async def briefing(actor: Actor = auth.ActorDep, fresh: bool = False) -> dict:
+    """The home screen: role-specific KPIs, today's meetings, priorities and the next best action."""
+    from app.services import briefing as br
+    return await br.build(actor, fresh=fresh)
+
+
+@router.get("/api/tasks")
+async def list_tasks(actor: Actor = auth.ActorDep, scope: str = "mine") -> dict:
+    from app.services import work
+    async with db.session_scope() as s:
+        rows = await work.tasks(s, actor, scope if scope in ("mine", "team", "assigned_by_me") else "mine", include_done=True)
+        nm = await work.names(s, actor.workspace_id)
+    return {"tasks": [work.task_view(t, nm) for t in rows]}
+
+
+@router.get("/api/tickets")
+async def list_tickets(actor: Actor = auth.ActorDep, scope: str = "mine") -> dict:
+    from app.services import work
+    async with db.session_scope() as s:
+        rows = await work.tickets(s, actor, "all" if scope == "all" and (actor.is_hr or actor.read_only) else "mine")
+        nm = await work.names(s, actor.workspace_id)
+    return {"tickets": [work.ticket_view(t, nm) for t in rows]}
+
+
 @router.get("/api/priorities")
 async def priorities(actor: Actor = auth.ActorDep) -> dict:
     from app.services import budget_months as bm
@@ -264,11 +304,13 @@ async def priorities(actor: Actor = auth.ActorDep) -> dict:
             reimb = (await s.execute(select(func.count()).select_from(Claim).where(Claim.workspace_id == actor.workspace_id, Claim.state == "approved",
                                                                                     Claim.settlement_state == "unpaid"))).scalar_one()
         pending_claims = (await s.execute(select(func.count()).select_from(Claim).where(Claim.workspace_id == actor.workspace_id, Claim.state == "submitted"))).scalar_one() if actor.is_approver else 0
-        try:
-            al = await bm.alerts(s, actor, today_ist())
-            alerts = len(al.get("alerts", []))
-        except DomainError:
-            alerts = 0
+        alerts = 0
+        if actor.can_read_finance:
+            try:
+                al = await bm.alerts(s, actor, today_ist())
+                alerts = len(al.get("alerts", []))
+            except DomainError:
+                alerts = 0
         unread = (await s.execute(select(func.count()).select_from(Message).where(Message.workspace_id == actor.workspace_id,
                                                                                     Message.recipient_user_id == actor.user_id,
                                                                                     Message.channel == "inbox", Message.read_at.is_(None)))).scalar_one()
@@ -278,6 +320,7 @@ async def priorities(actor: Actor = auth.ActorDep) -> dict:
 
 @router.get("/api/budget/alerts")
 async def budget_alerts(actor: Actor = auth.ActorDep) -> dict:
+    http_finance_read(actor)
     from app.services import budget_months as bm
     from app.services.records import today_ist
     async with db.session_scope() as s:
@@ -345,7 +388,7 @@ async def draft_message(body: DraftIn, actor: Actor = auth.ActorDep) -> dict:
 async def list_documents(actor: Actor = auth.ActorDep) -> dict:
     async with db.session_scope() as s:
         q = select(Document).where(Document.workspace_id == actor.workspace_id)
-        if not actor.is_approver:
+        if not actor.can_read_finance:
             q = q.where(Document.uploader_id == actor.user_id)
         rows = (await s.execute(q.order_by(Document.id.desc()).limit(30))).scalars().all()
     return {"documents": [{"id": d.id, "filename": d.filename, "status": d.status, "outcome": d.outcome, "at": d.created_at.isoformat()} for d in rows]}

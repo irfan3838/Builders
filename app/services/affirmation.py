@@ -23,6 +23,7 @@ _AFFIRM_PHRASES = sorted(
         "yes", "yes please", "yeah", "yep", "yup", "confirm", "confirmed", "i confirm", "go ahead",
         "do it", "proceed", "ok", "okay", "sure", "correct", "that's right", "thats right", "approve it",
         "record it", "submit it", "please do", "yes do it", "yes go ahead", "absolutely",
+        "approve", "approved", "book it", "yes book it", "send it", "yes send it", "schedule it", "do that",
         # Hinglish (romanized)
         "haan", "han", "haa", "ha", "haanji", "haan ji", "ji haan", "ji ha", "ji", "theek hai", "thik hai",
         "theek he", "thik he", "kar do", "kardo", "kar dijiye", "kar dijie", "bilkul", "sahi hai", "chalo",

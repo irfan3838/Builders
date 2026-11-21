@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 import { ease } from "../../animations/tokens";
 import { usePurser } from "../../state/store";
 import AmbientRibbons from "../assistant/AmbientRibbons";
+import PurserComposer from "../assistant/PurserComposer";
 import { useAssistant } from "../assistant/PurserVoiceController";
 import ArtifactPanel from "../artifacts/ArtifactPanel";
 import ToastManager from "../shared/ToastManager";
 import PurserSidebar from "./PurserSidebar";
 import WorkspaceView from "../../views/WorkspaceView";
 import { ViewRouter } from "../../views/ViewRouter";
+import { canSee } from "../../roles";
 
 export default function AppShell() {
   const P = usePurser();
@@ -44,9 +46,11 @@ export default function AppShell() {
           <motion.div key={P.view === "workspace" ? "ws" : P.view} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
             initial={{ opacity: 0, y: 12, filter: "blur(6px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} exit={{ opacity: 0, y: -10, filter: "blur(6px)" }}
             transition={{ duration: 0.36, ease }}>
-            {P.view === "workspace" ? <WorkspaceView /> : <ViewRouter view={P.view} />}
+            {P.view === "workspace" || !canSee(P.me.role, P.view) ? <WorkspaceView /> : <ViewRouter view={P.view} />}
           </motion.div>
         </AnimatePresence>
+        {/* One composer for every view: typed text and chips survive navigation. */}
+        <div className="shell-composer"><PurserComposer /></div>
       </main>
       <ArtifactPanel />
       <ToastManager />

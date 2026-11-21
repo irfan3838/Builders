@@ -4,8 +4,8 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, 
 import { api, Card, Me } from "../api";
 import { cardKey } from "../cards";
 
-export type View = "workspace" | "dashboards" | "mail" | "expenses" | "travel" | "claims" | "payments" | "budgets" | "reports";
-export const VIEWS: View[] = ["workspace", "dashboards", "mail", "expenses", "travel", "claims", "payments", "budgets", "reports"];
+export type View = "workspace" | "dashboards" | "mail" | "expenses" | "travel" | "claims" | "payments" | "budgets" | "reports" | "tasks" | "helpdesk";
+export const VIEWS: View[] = ["workspace", "dashboards", "mail", "expenses", "travel", "claims", "payments", "budgets", "reports", "tasks", "helpdesk"];
 
 /** Base voice/agent state comes from real events; success/error/cancelled are short feedback overlays. */
 export type OrbState = "idle" | "asleep" | "connecting" | "listening" | "processing" | "speaking" | "success" | "error" | "cancelled";
@@ -23,6 +23,9 @@ export type Decision = {
   category: string | null; beforePaise: number | null; afterPaise: number | null; final: boolean; approvedAt?: number; proposalId?: string | null;
 } | null;
 
+/** An MCQ clarification from Purser (ask_choice): shown above the composer until answered. */
+export type Choice = { id: string; question: string; options: { label: string; value: string }[]; step: number; max: number; answered?: string } | null;
+
 type Ctx = {
   me: Me;
   view: View; go: (v: View) => void;
@@ -36,6 +39,7 @@ type Ctx = {
   decision: Decision; setDecision: (d: Decision) => void;
   uploads: UploadItem[]; setUploads: React.Dispatch<React.SetStateAction<UploadItem[]>>;
   suggestions: Suggestion[]; setSuggestions: (s: Suggestion[]) => void;
+  choice: Choice; setChoice: React.Dispatch<React.SetStateAction<Choice>>;
   busy: React.MutableRefObject<number>;
   online: boolean;
 };
@@ -65,6 +69,7 @@ export function PurserProvider({ me, children }: { me: Me; children: ReactNode }
   const [decision, setDecision] = useState<Decision>(null);
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [choice, setChoice] = useState<Choice>(null);
   const [online, setOnline] = useState(navigator.onLine);
   const flashTimer = useRef<number | undefined>(undefined);
   const busy = useRef(0);
@@ -77,12 +82,19 @@ export function PurserProvider({ me, children }: { me: Me; children: ReactNode }
   }, []);
 
   const go = useCallback((v: View) => { if (location.hash !== `#/${v}`) location.hash = `/${v}`; setView(v); }, []);
+  const navRef = useRef<(v: View) => void>(go);
+  navRef.current = go;
 
   const addCards = useCallback((all: Card[]) => {
     // next-step chips are not artifacts: they live under the composer, never in the panel
     const sugg = all.filter((c) => c.card === "suggestions");
     if (sugg.length) setSuggestions(((sugg[sugg.length - 1].items || []) as Suggestion[]).slice(0, 3));
-    const incoming = all.filter((c) => c.card !== "suggestions");
+    const ch = all.filter((c) => c.card === "choice");
+    if (ch.length) { const c = ch[ch.length - 1]; setChoice({ id: c.id, question: c.question, options: c.options || [], step: c.step, max: c.max }); }
+    else if (all.some((c) => c.card !== "suggestions")) setChoice(null);  // Purser moved on (chart, proposal, ...)
+    const nav = all.filter((c) => c.card === "navigate");
+    if (nav.length) navRef.current?.(nav[nav.length - 1].view);
+    const incoming = all.filter((c) => !["suggestions", "choice", "navigate"].includes(c.card));
     if (!incoming.length) return;
     // within one batch the later card for the same object wins; then newest first, older copies dropped
     const byKey = new Map<string, Card>();
@@ -90,7 +102,8 @@ export function PurserProvider({ me, children }: { me: Me; children: ReactNode }
     const batch = [...byKey.values()].reverse();
     setCards((prev) => [...batch, ...prev.filter((c) => !byKey.has(cardKey(c)))].slice(0, 12));
     setBump((b) => b + 1);
-    setPanelOpen(true);
+    // Only things the user must look at or act on open the panel; other cards wait behind the tab badge.
+    if (incoming.some((c) => PANEL_OPENERS.has(c.card))) setPanelOpen(true);
   }, []);
   const removeCard = useCallback((key: string) => setCards((p) => p.filter((c) => cardKey(c) !== key)), []);
   const clearCards = useCallback(() => setCards([]), []);
@@ -123,14 +136,17 @@ export function PurserProvider({ me, children }: { me: Me; children: ReactNode }
   const value = useMemo<Ctx>(() => ({
     me, view, go, cards, addCards, removeCard, clearCards, panelOpen, setPanelOpen, bump, refresh,
     baseOrb, setBaseOrb, orb: flash ?? baseOrb, flashOrb, caption, say, toasts, toast, dismissToast,
-    priorities, reloadPriorities, decision, setDecision, uploads, setUploads, suggestions, setSuggestions, busy, online,
+    priorities, reloadPriorities, decision, setDecision, uploads, setUploads, suggestions, setSuggestions, choice, setChoice, busy, online,
   }), [me, view, go, cards, addCards, removeCard, clearCards, panelOpen, bump, refresh, baseOrb, flash, flashOrb, caption, say, toasts, toast,
-    dismissToast, priorities, reloadPriorities, decision, uploads, suggestions, online]);
+    dismissToast, priorities, reloadPriorities, decision, uploads, suggestions, choice, online]);
 
   return <PurserContext.Provider value={value}>{children}</PurserContext.Provider>;
 }
 
 /** Load a server object by path; reloads when `bump` changes. */
+const PANEL_OPENERS = new Set(["chart", "view", "flight_options", "hotel_options", "payment", "proposal", "claim_review", "receipt", "source", "mail_thread",
+  "contract_review"]);
+
 export function useLoad<T>(path: string | null, bump = 0) {
   const [data, setData] = useState<T | null>(null);
   const [err, setErr] = useState<string | null>(null);

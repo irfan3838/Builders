@@ -180,3 +180,16 @@ resource "aws_secretsmanager_secret_version" "google_refresh_token" {
     ignore_changes = [secret_string]
   }
 }
+
+resource "aws_secretsmanager_secret" "serpapi_api_key" {
+  name                    = "${local.name}/serpapi-api-key"
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "serpapi_api_key" {
+  secret_id     = aws_secretsmanager_secret.serpapi_api_key.id
+  secret_string = "replace-me" # app treats this as "flight search not configured" until aws_put_secrets copies the real value
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}

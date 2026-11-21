@@ -463,7 +463,9 @@ async def test_propose_tools_only_propose_never_write(seeded):
     out, ctx = await call(proposal_tools.propose_submit_claim, priya, document_id=doc, beneficiary_party_id=ids["arjun_party_id"], category="Travel",
                           reservation_id=ids["reservation_id"], reservation_treatment="final")
     assert out["ok"] and out["status"] == "open" and "Do NOT confirm" in out["instruction"]
-    assert ctx.ui == [{"card": "proposal", "proposal_id": out["proposal_id"]}]
+    # With a reservation the tool first shows the claim_review card (receipt vs reservation vs budget), then the proposal.
+    assert ctx.ui == [{"card": "claim_review", "document_id": doc, "reservation_id": ids["reservation_id"]},
+                      {"card": "proposal", "proposal_id": out["proposal_id"]}]
     assert await finance_counts() == before and await count(Receipt) == 0
 
 

@@ -109,6 +109,9 @@ async def _confirm(ctx: Ctx) -> dict:
         if out.status in ("executed", "replayed"):
             r = out.receipt
             ctx.context.show({"card": "receipt", "receipt_id": r.id})
+            pays = [e for e in (r.effects or []) if isinstance(e, dict) and e.get("type") == "payment_link"]
+            if pays:  # trips: hand the user to the real payment pages (airline checkout, hotel website)
+                ctx.context.show({"card": "payment", "receipt": r.ref, "items": pays})
             return {"ok": True, "status": out.status, "receipt": r.ref, "summary": r.summary, "effects": r.effects}
         new = out.new_proposal
         if new is not None:

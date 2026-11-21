@@ -33,6 +33,7 @@ from app.models import (
     Receipt,
     Reservation,
 )
+from app.rbac import require_writer
 from app.services import audit
 from app.services.actions import ACTIONS
 
@@ -51,6 +52,7 @@ def canonical(args: dict) -> tuple[dict, str]:
 
 
 async def create(s: AsyncSession, actor: Actor, kind: str, args: dict) -> Proposal:
+    require_writer(actor)  # the CEO login is read-only: no proposal can even be prepared
     action = ACTIONS[kind]
     clean, h = canonical(args)
     plan = await action.plan(s, actor, clean)  # raises DomainError when not allowed / invalid

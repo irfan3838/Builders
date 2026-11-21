@@ -14,6 +14,7 @@ from sqlalchemy import (
     Boolean,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -86,6 +87,10 @@ class User(Base, TimestampMixin):
     start_date: Mapped[date | None] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(20), default="active")  # active | invited
     notify_email: Mapped[str | None] = mapped_column(String(200))  # real inbox for demo email (allow-listed)
+    # last browser location the user shared (flight origin); never sent anywhere else
+    last_lat: Mapped[float | None] = mapped_column(Float)
+    last_lon: Mapped[float | None] = mapped_column(Float)
+    last_loc_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Trip(Base, TimestampMixin):
@@ -451,6 +456,8 @@ class Conversation(Base, TimestampMixin):
     foreground_proposal_id: Mapped[str | None] = mapped_column(String(40))
     current_document_id: Mapped[int | None] = mapped_column(BigInteger)
     last_snapshot_id: Mapped[str | None] = mapped_column(String(40))
+    # MCQ clarifications asked so far, per topic ({"chart": 2}); capped so Purser always gets to an answer
+    clarify_counts: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
 
 
 class VoiceTurn(Base, TimestampMixin):
@@ -712,3 +719,97 @@ class ContractDeadline(Base, TimestampMixin):
     kind: Mapped[str] = mapped_column(String(20))  # expiry | renewal_notice | survival_end
     due_on: Mapped[date] = mapped_column(Date, index=True)
     basis: Mapped[str] = mapped_column(Text)
+
+
+class GoogleOp(Base, TimestampMixin):
+    """Outbox for confirmed Gmail / Google Calendar changes on the linked account. Queued inside the confirm
+    transaction, performed after commit by messaging.dispatch (same pattern as email and meetings)."""
+
+    __tablename__ = "google_ops"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger)
+    ref: Mapped[str] = mapped_column(String(20), index=True)
+    kind: Mapped[str] = mapped_column(String(30))  # send_email | mail_action | reschedule_event | cancel_event | create_event
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    status: Mapped[str] = mapped_column(String(20), default="queued")  # queued | done | failed
+    status_detail: Mapped[str | None] = mapped_column(String(300))
+    result: Mapped[dict | None] = mapped_column(JSONB)
+    receipt_id: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class FlightBooking(Base, TimestampMixin):
+    """A SIMULATED flight booking: no ticket is bought. Real fare data from the search snapshot; confirmation email."""
+
+    __tablename__ = "flight_bookings"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger)
+    ref: Mapped[str] = mapped_column(String(20), index=True)  # PUR-1234 style pseudo PNR
+    origin: Mapped[str] = mapped_column(String(3))
+    destination: Mapped[str] = mapped_column(String(3))
+    depart_at: Mapped[str] = mapped_column(String(40))  # local time as given by the fare source
+    arrive_at: Mapped[str] = mapped_column(String(40))
+    airline: Mapped[str] = mapped_column(String(80))
+    flight_no: Mapped[str] = mapped_column(String(40))
+    price_paise: Mapped[int] = mapped_column(BigInteger)
+    source: Mapped[str] = mapped_column(String(20))  # serpapi | sample
+    status: Mapped[str] = mapped_column(String(30), default="booked_simulated")
+    details: Mapped[dict] = mapped_column(JSONB, default=dict)
+    trip_id: Mapped[int | None] = mapped_column(BigInteger)
+    receipt_id: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class Task(Base, TimestampMixin):
+    __tablename__ = "tasks"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    ref: Mapped[str] = mapped_column(String(20), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    notes: Mapped[str | None] = mapped_column(Text)
+    assignee_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    created_by: Mapped[int] = mapped_column(BigInteger)
+    due_on: Mapped[date | None] = mapped_column(Date)
+    priority: Mapped[str] = mapped_column(String(10), default="normal")  # low | normal | high
+    status: Mapped[str] = mapped_column(String(10), default="open")  # open | done
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Ticket(Base, TimestampMixin):
+    """Helpdesk request (IT / admin / facilities) raised by an employee; resolved by the admin team."""
+
+    __tablename__ = "tickets"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    ref: Mapped[str] = mapped_column(String(20), index=True)
+    requester_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    category: Mapped[str] = mapped_column(String(20))  # it | admin | facilities | hr
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text)
+    priority: Mapped[str] = mapped_column(String(10), default="normal")
+    status: Mapped[str] = mapped_column(String(15), default="open")  # open | in_progress | resolved
+    assignee_id: Mapped[int | None] = mapped_column(BigInteger)
+    resolution: Mapped[str | None] = mapped_column(Text)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class HotelBooking(Base, TimestampMixin):
+    """A hotel stay approved in Purser. Payment happens on the hotel's own website (Purser never takes payment)."""
+
+    __tablename__ = "hotel_bookings"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger)
+    ref: Mapped[str] = mapped_column(String(20), index=True)
+    hotel: Mapped[str] = mapped_column(String(200))
+    city: Mapped[str] = mapped_column(String(80))
+    check_in: Mapped[date] = mapped_column(Date)
+    check_out: Mapped[date] = mapped_column(Date)
+    nights: Mapped[int] = mapped_column(Integer)
+    total_paise: Mapped[int] = mapped_column(BigInteger)
+    source: Mapped[str] = mapped_column(String(20))  # serpapi | sample
+    status: Mapped[str] = mapped_column(String(30), default="pending_payment")
+    pay_url: Mapped[str | None] = mapped_column(String(1000))
+    details: Mapped[dict] = mapped_column(JSONB, default=dict)
+    trip_id: Mapped[int | None] = mapped_column(BigInteger)
+    receipt_id: Mapped[int | None] = mapped_column(BigInteger)

@@ -1,13 +1,15 @@
 // PurserComposer: type, attach, speak, send. Enter sends, Shift+Enter adds a line, Escape cancels the turn in flight.
 import { AnimatePresence, motion } from "motion/react";
-import { FileText, Keyboard, Sparkles, Mic, MicOff, Paperclip, RotateCcw, SendHorizontal, Square, X } from "lucide-react";
+import { FileText, Sparkles, Mic, MicOff, Paperclip, RotateCcw, SendHorizontal, Square, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { usePurser } from "../../state/store";
 import { ACCEPT_ATTR, useAssistant } from "./PurserVoiceController";
 
 export default function PurserComposer() {
   const A = useAssistant();
-  const { uploads, setUploads, suggestions } = usePurser();
+  const { uploads, setUploads, suggestions, choice, setChoice } = usePurser();
+  const showChoice = !!choice && (!choice.answered || A.sending);
+  const answer = (label: string, el: Element) => { setChoice((c) => (c ? { ...c, answered: label } : c)); A.send(label, el); };
   const [text, setText] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const ta = useRef<HTMLTextAreaElement>(null);
@@ -26,14 +28,20 @@ export default function PurserComposer() {
     const t = text.trim();
     if (!t) { setErr("Type a request first."); ta.current?.focus(); return; }
     if (t.length > 2000) { setErr("Keep requests under 2,000 characters."); return; }
+    if (!A.ready) { setErr(A.connError ? "Purser is offline. Retry the connection first." : "Connecting to Purser, one moment…"); return; }
     setErr(null);
     setText("");
     const ok = await A.send(t, box.current);
-    if (!ok && !text) setText((cur) => cur || "");
+    // Give the words back if the turn failed and the user has not started typing something else.
+    if (!ok) setText((cur) => cur || t);
   };
 
   const onKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (!A.sending) submit(); }
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+      e.preventDefault();
+      if (A.sending) setErr("Purser is still answering. Press Esc to stop it, or wait a moment.");
+      else submit();
+    }
     if (e.key === "Escape") { if (A.sending) A.cancel(); else if (text) setText(""); }
   };
 
@@ -41,8 +49,27 @@ export default function PurserComposer() {
 
   return (
     <div className="composer-row">
+      <AnimatePresence mode="wait">
+        {showChoice && choice && (
+          <motion.div key={choice.id} className="choice-card glass" role="group" aria-labelledby={`q-${choice.id}`}
+            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} transition={{ duration: 0.22 }}>
+            <p className="choice-q" id={`q-${choice.id}`}>
+              <span className="choice-step">Question {choice.step} of up to {choice.max}</span>{choice.question}
+            </p>
+            <div className="choice-opts">
+              {choice.options.map((o, i) => (
+                <button key={o.value} className={`choice-opt ${choice.answered === o.label ? "picked" : ""}`} disabled={!!choice.answered || !A.ready}
+                  onClick={(e) => answer(o.label, e.currentTarget)} aria-pressed={choice.answered === o.label}>
+                  <span className="choice-num" aria-hidden="true">{i + 1}</span>{o.label}
+                </button>
+              ))}
+            </div>
+            <p className="choice-hint">Tap an answer or just say it.</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <AnimatePresence>
-        {suggestions.length > 0 && !A.sending && (
+        {!showChoice && suggestions.length > 0 && !A.sending && (
           <motion.div className="suggest-row" role="group" aria-label="Suggested next steps"
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} transition={{ duration: 0.22 }}>
             {suggestions.map((sg) => (
@@ -70,11 +97,10 @@ export default function PurserComposer() {
             ))}
           </AnimatePresence>
         </div>
-        <button className="icon-btn" aria-label="Focus the text box" title="Type" onClick={() => ta.current?.focus()}><Keyboard size={20} /></button>
         <label className="sr-only" htmlFor="purser-input">Ask Purser</label>
-        <textarea id="purser-input" ref={ta} rows={1} value={text} placeholder="Ask Purser anything about your finances…"
+        <textarea id="purser-input" ref={ta} rows={1} value={text} placeholder={A.ready ? "Ask Purser anything…" : "Connecting to Purser…"}
           onChange={(e) => { setText(e.target.value); if (err) setErr(null); }} onKeyDown={onKey} aria-invalid={!!err}
-          aria-describedby={err ? "composer-err" : undefined} disabled={!A.ready} />
+          aria-describedby={err ? "composer-err" : undefined} />
         {A.lastFailed && !A.sending && !text && (
           <button className="icon-btn" aria-label="Retry last request" title="Retry" onClick={() => A.send(A.lastFailed!, box.current)}><RotateCcw size={18} /></button>
         )}
@@ -96,7 +122,12 @@ export default function PurserComposer() {
         <input ref={file} type="file" accept={ACCEPT_ATTR} multiple hidden
           onChange={(e) => { const fs = [...(e.target.files || [])]; if (fs.length) A.upload(fs, box.current); e.target.value = ""; }} />
       </motion.div>
-      {err && <p id="composer-err" className="composer-err" role="alert">{err}</p>}
+      {A.connError && (
+        <p className="composer-err" role="alert">
+          {A.connError} <button className="link-btn" onClick={A.reconnect}>Retry</button>
+        </p>
+      )}
+      {err && !A.connError && <p id="composer-err" className="composer-err" role="alert">{err}</p>}
     </div>
   );
 }

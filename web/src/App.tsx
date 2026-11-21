@@ -10,7 +10,7 @@ import { ease } from "./animations/tokens";
 import { PurserProvider } from "./state/store";
 
 function Login({ onDone }: { onDone: (m: Me) => void }) {
-  const [email, setEmail] = useState("priya@purser.demo");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,7 +34,6 @@ function Login({ onDone }: { onDone: (m: Me) => void }) {
         <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus /></label>
         {err && <motion.p className="error" role="alert" initial={{ x: -6 }} animate={{ x: [6, -4, 2, 0] }} transition={{ duration: 0.35 }}>{err}</motion.p>}
         <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
-        <p className="fine">Demo workspace with synthetic data.</p>
       </motion.form>
     </main>
   );

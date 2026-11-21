@@ -78,8 +78,8 @@ def _send_smtp(to: str, subject: str, body: str) -> str:
     msg["From"] = f"Purser <{st.gmail_address}>"
     msg["To"] = to
     msg["Subject"] = " ".join(subject.split())[:200]  # header values may not contain newlines
-    msg["Message-ID"] = make_msgid(domain="purser.demo")
-    msg.set_content(body + "\n\n— Sent by Purser (hackathon demo, synthetic company data)")
+    msg["Message-ID"] = make_msgid(domain="purser.app")
+    msg.set_content(body + "\n\n— Sent by Purser")
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=20) as smtp:
         smtp.login(st.gmail_address, st.gmail_app_password)
         smtp.send_message(msg)
@@ -89,11 +89,15 @@ def _send_smtp(to: str, subject: str, body: str) -> str:
 async def dispatch(limit: int = 20) -> int:
     """Send queued emails. Each row is claimed with SKIP LOCKED so concurrent dispatchers never double-send.
     Queued Google Calendar meetings are created first (their own failures never block email)."""
-    from app.services import calendar
+    from app.services import calendar, google_actions
     try:
         await calendar.dispatch()
     except Exception:
         log.exception("calendar dispatch failed")
+    try:
+        await google_actions.dispatch()
+    except Exception:
+        log.exception("google ops dispatch failed")
     sent = 0
     for _ in range(limit):
         async with db.session_scope() as s:

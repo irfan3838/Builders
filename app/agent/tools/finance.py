@@ -11,6 +11,7 @@ from app import db
 from app.agent.context import PurserContext, safe_tool
 from app.models import AuditEvent, Bill, BudgetLine, Claim, Message, Party, Receipt, Settlement
 from app.money import format_inr
+from app.rbac import require_finance_read
 from app.services import budget, records
 
 Ctx = RunContextWrapper[PurserContext]
@@ -31,6 +32,7 @@ def _pos_view(line: BudgetLine, p: dict) -> dict:
 async def get_budget_status(ctx: Ctx, category: str) -> dict:
     """Budget position for one category (e.g. Travel): allocated, reserved, committed, spent, available, pending claims."""
     a = ctx.context.actor
+    require_finance_read(a)
     async with db.session_scope() as s:
         line = await budget.get_line(s, a.workspace_id, category=category)
         p = await budget.position(s, a.workspace_id, line.id)
@@ -41,10 +43,12 @@ async def get_budget_status(ctx: Ctx, category: str) -> dict:
 @function_tool
 @safe_tool
 async def list_budget_categories(ctx: Ctx) -> dict:
-    """List budget categories with their available amounts."""
+    """List budget categories with their available amounts (employees get the category names only, for filing a claim)."""
     a = ctx.context.actor
     async with db.session_scope() as s:
         lines = (await s.execute(select(BudgetLine).where(BudgetLine.workspace_id == a.workspace_id).order_by(BudgetLine.category))).scalars().all()
+        if not a.can_read_finance:
+            return {"ok": True, "categories": [{"category": line.category} for line in lines], "note": "amounts are visible to finance only"}
         out = []
         for line in lines:
             p = await budget.position(s, a.workspace_id, line.id)
@@ -58,6 +62,7 @@ async def explain_budget_change(ctx: Ctx, category: str, limit: int = 6) -> dict
     """The most recent ledger movements on a budget line, newest first, each with its receipt and reason.
     Use this to answer 'what changed' or 'why did available go up/down'."""
     a = ctx.context.actor
+    require_finance_read(a)
     async with db.session_scope() as s:
         line = await budget.get_line(s, a.workspace_id, category=category)
         mv = await budget.movements(s, a.workspace_id, line.id, limit=max(1, min(limit, 20)))
@@ -170,6 +175,17 @@ async def get_attention_items(ctx: Ctx, limit: int = 3) -> dict:
 
 @function_tool
 @safe_tool
+async def get_briefing(ctx: Ctx) -> dict:
+    """The user's briefing for today ("what's my day", "brief me", "what should I do next"): next best action,
+    today's meetings, priorities/risks and role KPIs. The same briefing is on the home screen. Speak the next best
+    action first, then the count of meetings and at most two priorities."""
+    from app.services import briefing as br
+    b = await br.build(ctx.context.actor, fresh=True)
+    return {"ok": True, **br.spoken(b)}
+
+
+@function_tool
+@safe_tool
 async def get_record(ctx: Ctx, ref: str) -> dict:
     """Details of a claim (C…) or bill (B…): parties, amount, state, settlement, source document, receipts."""
     a = ctx.context.actor
@@ -201,7 +217,7 @@ async def get_record(ctx: Ctx, ref: str) -> dict:
 async def get_audit_history(ctx: Ctx, ref: str | None = None, limit: int = 10) -> dict:
     """Decision history: who did what, when, with which receipt. Optionally for one record ref."""
     a = ctx.context.actor
-    if not a.is_approver:
+    if not a.can_read_finance:
         return {"ok": False, "code": "FORBIDDEN", "message": "Only finance approvers can view the audit history."}
     async with db.session_scope() as s:
         q = select(AuditEvent).where(AuditEvent.workspace_id == a.workspace_id, AuditEvent.action.notlike("proposal.%"))
@@ -215,4 +231,4 @@ async def get_audit_history(ctx: Ctx, ref: str | None = None, limit: int = 10) -
     return {"ok": True, "events": rows}
 
 
-TOOLS = [get_budget_status, list_budget_categories, explain_budget_change, resolve_party, get_attention_items, get_record, get_audit_history]
+TOOLS = [get_budget_status, list_budget_categories, explain_budget_change, resolve_party, get_attention_items, get_briefing, get_record, get_audit_history]

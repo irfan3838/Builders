@@ -1,9 +1,10 @@
 // PurserSidebar: glass control surface. Navigation with a travelling active indicator, live priority counters,
 // notifications from the audit trail and inbox, profile menu. Collapses to icons (preference remembered).
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
+import { allowedViews, roleLabel } from "../../roles";
 import {
-  Building2, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, Clock, CreditCard, FileText, Flag, Folder, House, Layers, LayoutGrid,
-  LogOut, Mail, Settings, Target, User, X,
+  Building2, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, CreditCard, FileText, Folder, House, Layers, LayoutGrid, LifeBuoy, ListTodo,
+  LogOut, Mail, Settings, User, X,
 } from "lucide-react";
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api";
@@ -158,7 +159,7 @@ function SettingsDialog({ onClose }: { onClose: () => void }) {
           <input type="checkbox" checked={A.handsFree} onChange={(e) => A.setHandsFree(e.target.checked)} autoFocus />
           Hands-free: wake Purser by saying “Purser” (Chrome/Edge; uses the browser's speech service while armed)
         </label>
-        <p className="fine">Signed in as {P.me.name} · {P.me.role.replace("_", " ")}. Demo workspace with synthetic data.</p>
+        <p className="fine">Signed in as {P.me.name} · {P.me.role.replace("_", " ")}.</p>
       </motion.div>
     </motion.div>
   );
@@ -176,7 +177,7 @@ function Profile({ collapsed }: { collapsed: boolean }) {
     addEventListener("mousedown", off); addEventListener("keydown", esc);
     return () => { removeEventListener("mousedown", off); removeEventListener("keydown", esc); };
   }, [open]);
-  const role = P.me.role === "admin" ? "Finance Lead" : P.me.role === "finance_approver" ? "Finance Approver" : "Employee";
+  const role = roleLabel(P.me.role);
   const signOut = async () => {
     try { await api.post("/api/auth/logout"); } finally { location.hash = ""; location.reload(); }
   };
@@ -204,24 +205,22 @@ export default function PurserSidebar() {
   const toggle = () => setCollapsed((c) => { localStorage.setItem(COLLAPSE_KEY, c ? "0" : "1"); return !c; });
   const pr = P.priorities;
   const ic = 21;
-  const primary: NavDef[] = useMemo(() => [
+  const allow = allowedViews(P.me.role);
+  const primary: NavDef[] = useMemo(() => ([
     { view: "workspace", label: "Workspace", icon: <House size={ic} strokeWidth={1.6} /> },
     { view: "dashboards", label: "Dashboards", icon: <LayoutGrid size={ic} strokeWidth={1.6} /> },
     { view: "mail", label: "Mail", icon: <Mail size={ic} strokeWidth={1.6} />, count: pr?.unread_mail },
-  ], [pr]);
-  const compartments: NavDef[] = useMemo(() => [
+    { view: "tasks", label: "Tasks", icon: <ListTodo size={ic} strokeWidth={1.6} /> },
+    { view: "helpdesk", label: "Helpdesk", icon: <LifeBuoy size={ic} strokeWidth={1.6} /> },
+  ] as NavDef[]).filter((d) => allow.includes(d.view)), [pr, allow]);
+  const compartments: NavDef[] = useMemo(() => ([
     { view: "expenses", label: "Expenses", icon: <Layers size={ic} strokeWidth={1.6} /> },
     { view: "travel", label: "Travel", icon: <Building2 size={ic} strokeWidth={1.6} /> },
     { view: "claims", label: "Claims", icon: <FileText size={ic} strokeWidth={1.6} />, count: pr?.claims_pending },
     { view: "payments", label: "Payments", icon: <CreditCard size={ic} strokeWidth={1.6} /> },
     { view: "budgets", label: "Budgets", icon: <ChartColumn size={ic} strokeWidth={1.6} /> },
     { view: "reports", label: "Reports", icon: <Folder size={ic} strokeWidth={1.6} /> },
-  ], [pr]);
-  const priorities: (NavDef & { key: string })[] = [
-    { key: "approvals", view: "claims", label: "Approvals", icon: <Target size={ic} strokeWidth={1.6} />, count: pr?.approvals },
-    { key: "reimb", view: "payments", label: "Reimbursements", icon: <Clock size={ic} strokeWidth={1.6} />, count: pr?.reimbursements },
-    { key: "alerts", view: "budgets", label: "Budget alerts", icon: <Flag size={ic} strokeWidth={1.6} />, count: pr?.budget_alerts },
-  ];
+  ] as NavDef[]).filter((d) => allow.includes(d.view)), [pr, allow]);
 
   return (
     <motion.nav className="sidebar" aria-label="Purser navigation" initial={false} animate={{ width: collapsed ? 78 : 240 }} transition={{ duration: dur.sidebar, ease }}>
@@ -238,15 +237,10 @@ export default function PurserSidebar() {
             {primary.map((d) => <NavButton key={d.view} def={d} active={P.view === d.view} collapsed={collapsed} onClick={() => P.go(d.view)} id={d.view === "mail" ? "nav-mail" : undefined} />)}
           </div>
           <div className="sb-section">
-            {!collapsed && <div className="sb-label">Compartments</div>}
+            {!collapsed && compartments.length > 0 && <div className="sb-label">Compartments</div>}
             {compartments.map((d) => <NavButton key={d.view} def={d} active={P.view === d.view} collapsed={collapsed} onClick={() => P.go(d.view)} id={`nav-${d.view}`} />)}
           </div>
         </LayoutGroup>
-        <div className="sb-section">
-          {!collapsed && <div className="sb-label">Priorities</div>}
-          {priorities.map((d) => <NavButton key={d.key} def={d} active={false} collapsed={collapsed} id={d.key === "alerts" ? "nav-alerts" : undefined}
-            onClick={() => P.go(d.view)} />)}
-        </div>
         {!collapsed && (
           <div className="sb-section">
             <div className="sb-label">Notifications</div>

@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app import db
 from app.agent.context import PurserContext, safe_tool
 from app.agent.tools.proposals import _propose
+from app.rbac import require_finance_read
 from app.services import budget
 from app.services import budget_months as bm
 from app.services.budget_actions import step_id
@@ -25,6 +26,7 @@ async def get_budget_month(ctx: Ctx, category: str | None = None, month: str | N
     """This month's (or a given month's) budget per category: budget, spent, remaining, used %, status
     (UNDERUSED below 85%, ON_TRACK 85-107%, OVERRUN above 107%) and, for the current month, pacing.
     month: YYYY-MM or a month name; omit for the current month. Omit category for all categories."""
+    require_finance_read(ctx.context.actor)
     a, today = ctx.context.actor, today_ist()
     m = bm.parse_month(month, today)
     async with db.session_scope() as s:
@@ -42,6 +44,7 @@ async def get_budget_month(ctx: Ctx, category: str | None = None, month: str | N
 async def get_budget_year(ctx: Ctx, category: str) -> dict:
     """One category month by month for this financial year: base plan, current budget, spent, remaining, status,
     closed or open. Use for 'Software month by month' or 'is Travel on plan this year'."""
+    require_finance_read(ctx.context.actor)
     a, today = ctx.context.actor, today_ist()
     async with db.session_scope() as s:
         cells = await bm.grid(s, a, today, category=category)
@@ -56,6 +59,7 @@ async def get_budget_year(ctx: Ctx, category: str) -> dict:
 async def get_budget_alerts(ctx: Ctx) -> dict:
     """Budget warnings now: categories at/over their monthly limit, approaching it, or burning fast early in the month;
     months waiting to be closed; and how many trend recommendations are open."""
+    require_finance_read(ctx.context.actor)
     async with db.session_scope() as s:
         out = await bm.alerts(s, ctx.context.actor, today_ist())
     return {"ok": True, **out}
@@ -68,7 +72,7 @@ async def get_budget_recommendations(ctx: Ctx, target_month: str | None = None) 
     and the plan that acts on them for one month (move money from under-used to over-running categories first,
     then top up or take back). Advisory only until applied with propose_apply_recommendations."""
     a, today = ctx.context.actor, today_ist()
-    if not a.is_approver:
+    if not a.can_read_finance:
         return {"ok": False, "code": "FORBIDDEN", "message": "Budget recommendations are for finance approvers and admins."}
     target = bm.parse_month(target_month, today) if target_month else bm.default_target(today)
     async with db.session_scope() as s:
@@ -88,6 +92,7 @@ async def get_budget_recommendations(ctx: Ctx, target_month: str | None = None) 
 async def forecast_budget(ctx: Ctx, category: str | None = None) -> dict:
     """Where spend is heading at today's run rate: this month's projected month-end and the financial year's
     projected year-end versus budget. A forecast is an estimate, not a recommendation or a change."""
+    require_finance_read(ctx.context.actor)
     async with db.session_scope() as s:
         out = await bm.outlook(s, ctx.context.actor, today_ist(), category)
     return {"ok": True, **out}
@@ -100,6 +105,7 @@ async def what_if(ctx: Ctx, category: str | None = None, percent: float | None =
     """Scenario: 'if software costs rise 15% from December, how much is left in March?' -> category='IT & Cloud',
     percent=15, start_month='2026-12'. amount_rupees for a fixed extra cost (once, or every month with per_month=true);
     negative values model savings. Changes nothing."""
+    require_finance_read(ctx.context.actor)
     async with db.session_scope() as s:
         out = await bm.what_if(s, ctx.context.actor, today_ist(), category=category, percent=percent,
                                amount_paise=bm_round(amount_rupees), per_month=per_month, start=start_month, end=end_month)
@@ -116,6 +122,7 @@ def bm_round(rupees: float | None) -> int | None:
 async def get_budget_history(ctx: Ctx, category: str | None = None) -> dict:
     """Who changed the budget, when, why and by how much (transfers, top-ups, reductions, month closes, carry-overs),
     newest first, with before/after amounts per month."""
+    require_finance_read(ctx.context.actor)
     async with db.session_scope() as s:
         out = await bm.history(s, ctx.context.actor, category)
     return {"ok": True, "changes": out}

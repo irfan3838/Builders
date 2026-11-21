@@ -44,6 +44,8 @@ async def build_chart(ctx: Ctx, spec: ChartSpec) -> dict:
         snap = await charts.store(s, a, payload)
         out = charts.summarize(snap)
         ctx.context.show(_card(snap))
+    from app.agent.tools.clarify import bump
+    await bump(a, "chart", reset=True)  # a rendered chart closes the clarification round
     return {"ok": True, **out}
 
 

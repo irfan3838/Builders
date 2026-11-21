@@ -61,11 +61,19 @@ terraform -chdir=infra/terraform apply -var image_tag=$TAG
 
 - `EMAIL_ALLOWED_RECIPIENTS` (tfvars `app_env`): a comma list of addresses, or `*` to email any address on file.
 - `OPENAI_VOICE_NAME` / `OPENAI_VOICE_SPEED` (tfvars `app_env`): live voice and speaking pace (0.25-1.5, default 1.15). If the live API rejects `speed`, the session is retried without it and a warning is logged.
-- Google Calendar: one-time `uv run python -m scripts.google_oauth` (needs `.secrets/google_client.json`, a Desktop
-  OAuth client with the `calendar.events` scope) writes `GOOGLE_CLIENT_ID/SECRET/REFRESH_TOKEN` to `.env`.
+- Google (Gmail + Calendar) for ONE login: `GOOGLE_LINKED_EMAIL` (tfvars `app_env`, e.g. irfmed38@gmail.com) is the only
+  Purser user whose real Gmail and Calendar are used; every other login gets the Purser inbox and demo meetings.
+  One-time `uv run python -m scripts.google_oauth` (needs `.secrets/google_client.json`, a Desktop OAuth client; scopes
+  `gmail.modify`, `calendar.events`, `openid email`; the Gmail API enabled and the account added as a test user) — it
+  refuses a token for any account other than `GOOGLE_LINKED_EMAIL` and writes `GOOGLE_CLIENT_ID/SECRET/REFRESH_TOKEN` to `.env`.
   `GOOGLE_CLIENT_ID` goes in tfvars `app_env`; `scripts.aws_put_secrets` copies the secret and refresh token.
-  Placeholder values (`replace-me`) mean "calendar not connected": meetings are recorded without a Meet link.
-- Keep the OAuth app **published** (not Testing), or the refresh token expires after 7 days.
+  Placeholder values (`replace-me`) mean "Google not connected": meetings are recorded without a Meet link.
+- In Testing mode the refresh token expires after 7 days (enough for the event); `gmail.modify` is a restricted scope,
+  so publishing the app would need Google verification.
+- Flights: `SERPAPI_API_KEY` (Secrets Manager `munshi/serpapi-api-key`, copied by `scripts.aws_put_secrets`). Placeholder or
+  unset = search returns a clearly labelled SAMPLE list. Bookings are simulated (no ticket, no payment).
+- Role logins (irfmed38 admin, ceo@purser.demo read-only CEO, employee@purser.demo): `scripts/aws_run_task.sh seed-roles`
+  adds them to existing data without a reset (`seed-demo` includes them).
 
 ## Rollback
 

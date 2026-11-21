@@ -6,4 +6,5 @@ app_env = {
   GMAIL_ADDRESS            = "sender@example.com"
   EMAIL_ALLOWED_RECIPIENTS = "you@example.com"
   GOOGLE_CLIENT_ID         = "1234-abc.apps.googleusercontent.com"
+  GOOGLE_LINKED_EMAIL      = "you@gmail.com" # the one login whose real Gmail + Calendar Purser uses
 }

@@ -13,7 +13,7 @@ import re
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import db
-from app.actor import ADMIN, FINANCE_APPROVER, Actor
+from app.actor import ADMIN, Actor
 from app.config import get_settings
 from app.errors import FORBIDDEN, INVALID_STATE, DomainError
 from app.models import Workspace
@@ -25,7 +25,7 @@ _tasks: dict[tuple[int, int], asyncio.Task] = {}
 
 
 def can_view(actor: Actor) -> bool:
-    return actor.role in (ADMIN, FINANCE_APPROVER)
+    return actor.can_read_finance
 
 
 def can_decide(actor: Actor) -> bool:

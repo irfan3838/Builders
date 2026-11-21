@@ -20,11 +20,21 @@ function headers(json: boolean, method: string) {
   return h;
 }
 
+// A hung request must not keep the composer busy forever; the server's agent turn times out at 90 s.
+const REQUEST_TIMEOUT_MS = 95_000;
+
+function withTimeout(signal?: AbortSignal): AbortSignal | undefined {
+  if (typeof AbortSignal === "undefined" || !("timeout" in AbortSignal)) return signal;
+  const t = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  return signal && "any" in AbortSignal ? AbortSignal.any([signal, t]) : signal ?? t;
+}
+
 async function call<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   let r: Response;
   try {
-    r = await fetch(path, { method, headers: headers(body !== undefined, method), credentials: "same-origin", body: body !== undefined ? JSON.stringify(body) : undefined, signal });
+    r = await fetch(path, { method, headers: headers(body !== undefined, method), credentials: "same-origin", body: body !== undefined ? JSON.stringify(body) : undefined, signal: withTimeout(signal) });
   } catch (e: any) {
+    if (e?.name === "TimeoutError") throw new ApiError(0, { message: "Purser took too long to answer. Try again." });
     if (e?.name === "AbortError") throw e;
     throw new ApiError(0, { message: "Network unavailable. Check your connection and retry." });
   }
@@ -63,6 +73,6 @@ export const api = {
 };
 
 export type Card = { card: string; [k: string]: any };
-export type Me = { id: number; name: string; role: string; csrf: string };
+export type Me = { id: number; name: string; role: string; csrf: string; google?: boolean };
 
 export const inr = (paise: number | null | undefined) => paise == null ? "—" : "₹" + new Intl.NumberFormat("en-IN").format(Math.round(paise / 100));

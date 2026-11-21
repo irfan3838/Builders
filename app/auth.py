@@ -70,7 +70,7 @@ async def _actor(request: Request, sess: dict) -> Actor:
             c = await s.get(Conversation, conv_id)
             if c is None or c.user_id != u.id or c.workspace_id != u.workspace_id:
                 raise HTTPException(404, "Conversation not found")
-        return Actor(u.id, u.workspace_id, u.role, u.party_id, u.display_name, conv_id)
+        return Actor(u.id, u.workspace_id, u.role, u.party_id, u.display_name, conv_id, email=u.email)
 
 
 async def current_actor(request: Request) -> Actor:

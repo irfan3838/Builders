@@ -19,12 +19,12 @@ _client: AsyncOpenAI | None = None
 _tasks: dict[str, asyncio.Task] = {}
 
 FRONTEND_INSTRUCTIONS = """You are Purser, a voice finance assistant for an Indian company. Speak briefly and warmly.
-Match the user's language: Hindi, English or Hinglish.
-For ANY request about budgets, bills, claims, receipts, invoices, payments, approvals or documents, delegate to the backend. This includes "yes", "haan", "no", "cancel" and corrections, because those answer a pending question.
+Speak English by default. Switch to Hindi, Hinglish or another language only when the user clearly speaks it, and stay in it until they switch back; short words like "ok", "yes" or "haan" never change the language.
+Delegate EVERY request to the backend except a plain greeting: finance, HR, leave, tasks, tickets, mail, calendar, meetings, flights, travel, charts, briefings, anything. This includes "yes", "haan", "no", "cancel", "approve" and corrections, because those answer a pending question.
 Speak only what the backend returns. Never state an amount, name, date or status the backend did not give you.
 Never say something was approved, submitted or recorded unless the backend said so.
 Speak at a brisk, natural conversational pace, especially in Hindi and Hinglish; do not drag words or pause between phrases.
-While waiting for the backend, say one short, natural filler in the user's language, picking a different one each time (for example "ek second", "bas ek minute", "haan, dekhti hoon", "abhi batati hoon", "ruko zara", "one moment", "let me check"). Never repeat the filler you used on the previous turn, and say only one per turn. On yes, no or cancel turns keep it to a word or skip it.
+While waiting for the backend, say one short, natural filler in the language you are speaking, picking a different one each time (English: "one moment", "let me check", "sure, checking", "give me a second", "on it"; Hindi only if the user speaks Hindi: "ek second", "abhi batati hoon"). Never repeat the filler you used on the previous turn, and say only one per turn. On yes, no or cancel turns keep it to a word or skip it.
 When the backend reply ends with a suggested next step or question, speak it exactly as given.
 """
 
@@ -41,7 +41,7 @@ def session_config(wake_text: str | None = None, *, with_speed: bool = True) -> 
         opener = (f"The user woke you by saying 'Purser' and continued: «{wake_text[:300]}». "
                   "Treat that as their request: delegate it to the backend now and speak the answer.")
     else:
-        opener = "The user just said your name to wake you. Greet them in at most three words, in Hinglish, e.g. 'Haan ji, boliye?'"
+        opener = "The user just said your name to wake you. Greet them in at most four words, in English, e.g. 'Hi, how can I help?'"
     st = get_settings()
     output: dict = {"voice": st.openai_voice_name}
     if with_speed and st.openai_voice_speed and st.openai_voice_speed != 1.0:
@@ -145,25 +145,28 @@ class LiveBridge:
                 async with db.session_scope() as s:
                     await confirmation.record_turn(s, self.actor, text, source="live_sideband", start_ms=start, end_ms=end)
             events.publish(self.actor.conversation_id, {"type": "user_turn", "text": text})
-            try:
-                r = await run_turn(self.actor, text, channel="live", source="live_sideband", record_turn=False,
-                                   presented_offset_ms=None)
-                reply = r.reply
-                for card in r.ui:
-                    events.publish(self.actor.conversation_id, {"type": "card", **card})
-            except Exception:
-                log.exception("delegation failed conv=%s", self.actor.conversation_id)
-                reply = "Sorry, I couldn't reach the books just now. Please say that again."
-            try:
-                await conn.session.commentary.append(delegation_id=delegation_id, content=reply[:1800])
-            except Exception as e:
-                log.info("reply not spoken conv=%s (%s)", self.actor.conversation_id, type(e).__name__)
-            # Bind presentation to the live timeline: a confirming reply must START after this point.
-            async with db.session_scope() as s:
-                p = await proposals.get_open(s, self.actor)
-                if p is not None and p.presented_offset_ms is None:
-                    p.presented_offset_ms = max(self.timeline_ms, end)
-            events.publish(self.actor.conversation_id, {"type": "assistant_turn", "text": reply})
+            reply = ""
+            try:  # the client unlocks its composer on assistant_turn, so it must be sent on every path
+                try:
+                    r = await run_turn(self.actor, text, channel="live", source="live_sideband", record_turn=False,
+                                       presented_offset_ms=None)
+                    reply = r.reply
+                    for card in r.ui:
+                        events.publish(self.actor.conversation_id, {"type": "card", **card})
+                except Exception:
+                    log.exception("delegation failed conv=%s", self.actor.conversation_id)
+                    reply = "Sorry, I couldn't reach the books just now. Please say that again."
+                try:
+                    await conn.session.commentary.append(delegation_id=delegation_id, content=reply[:1800])
+                except Exception as e:
+                    log.info("reply not spoken conv=%s (%s)", self.actor.conversation_id, type(e).__name__)
+                # Bind presentation to the live timeline: a confirming reply must START after this point.
+                async with db.session_scope() as s:
+                    p = await proposals.get_open(s, self.actor)
+                    if p is not None and p.presented_offset_ms is None:
+                        p.presented_offset_ms = max(self.timeline_ms, end)
+            finally:
+                events.publish(self.actor.conversation_id, {"type": "assistant_turn", "text": reply})
 
 
 async def start(actor: Actor, sdp: str, wake_text: str | None = None) -> dict:

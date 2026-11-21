@@ -2,7 +2,8 @@
 # Run a one-off command in the deployed task image (same secrets, network and DB as the service).
 #   scripts/aws_run_task.sh migrate        -> alembic upgrade head
 #   scripts/aws_run_task.sh seed-reset     -> alembic upgrade head && reseed SYNTHETIC demo data (TRUNCATES all tables)
-#   scripts/aws_run_task.sh seed-demo      -> same, plus the larger synthetic demo dataset (seed/demo_data.py)
+#   scripts/aws_run_task.sh seed-demo      -> same, plus the larger synthetic demo dataset (seed/demo_data.py) + role logins
+#   scripts/aws_run_task.sh seed-roles     -> add the irfmed38 / ceo / employee logins to the existing data (non-destructive)
 # Waits for the task to stop and prints its exit code and the last log lines.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -17,8 +18,9 @@ LOG_GROUP=$($TF output -raw log_group)
 case "${1:-}" in
   migrate)    CMD='alembic upgrade head' ;;
   seed-reset) CMD='alembic upgrade head && python -m seed.seed_v1 --reset' ;;
-  seed-demo)  CMD='alembic upgrade head && python -m seed.seed_v1 --reset --demo' ;;
-  *) echo "usage: $0 migrate|seed-reset|seed-demo" >&2; exit 2 ;;
+  seed-demo)  CMD='alembic upgrade head && python -m seed.seed_v1 --reset --demo && python -m seed.role_users' ;;
+  seed-roles) CMD='alembic upgrade head && python -m seed.role_users' ;;
+  *) echo "usage: $0 migrate|seed-reset|seed-demo|seed-roles" >&2; exit 2 ;;
 esac
 
 # Optional: SEED_ADMIN_NAME="Irfan" scripts/aws_run_task.sh seed-reset  (non-secret; passed as a task env override)

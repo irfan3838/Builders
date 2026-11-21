@@ -115,7 +115,7 @@ class Cell:
                "budget": format_inr(self.adjusted), "spent": format_inr(self.actual), "remaining": format_inr(self.remaining),
                "used_pct": self.used_pct, "status": self.status, "closed": self.closed, "when": self.when}
         if self.source == "imported_snapshot":
-            out["source"] = "imported historical snapshot (synthetic)"
+            out["source"] = "imported historical snapshot"
         if self.pacing:
             out["pacing"] = self.pacing
         if self.variance_reason:
@@ -196,7 +196,7 @@ async def alerts(s: AsyncSession, actor: Actor, today: date) -> dict:
     items.sort(key=lambda i: (order.get(next((k for k, v in ALERT_WORDS.items() if v == i["alert"]), ""), 9), i["category"]))
     due = sorted({c.month for c in cells if c.when == "past" and not c.closed and (c.adjusted or c.actual)})
     out = {"as_of": today.isoformat(), "alerts": items, "months_due_for_close": [label(m) for m in due]}
-    if actor.is_approver:
+    if actor.can_read_finance:
         out["recommendations_open"] = len(await recommendations(s, actor))
     return out
 

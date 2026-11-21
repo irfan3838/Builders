@@ -5,6 +5,9 @@ import { api } from "../api";
 export type VoiceState = "idle" | "connecting" | "listening" | "speaking" | "error";
 export type VoiceActivity = () => void;
 
+/** A pause longer than this between transcript deltas starts a new caption (e.g. filler, then the answer). */
+const CAPTION_GAP_MS = 1500;
+
 export class LiveVoice {
   /** Set when the browser refused microphone access (permission denied). */
   denied = false;
@@ -13,13 +16,15 @@ export class LiveVoice {
   private mic?: MediaStream;
   private audio = new Audio();
   private speakingTimer?: number;
+  private lastCaption = { who: "", at: 0 };
   /** Streams for the orb's audio meter: microphone (listening) and Purser's voice (speaking). */
   micStream?: MediaStream;
   outStream?: MediaStream;
 
   constructor(
     private onState: (s: VoiceState, detail?: string) => void,
-    private onCaption: (who: "user" | "purser", delta: string) => void,
+    /** `fresh` = this delta starts a new utterance (speaker changed or a pause), so the caption restarts. */
+    private onCaption: (who: "user" | "purser", delta: string, fresh: boolean) => void,
   ) { this.audio.autoplay = true; }
 
   onActivity: VoiceActivity = () => {};
@@ -53,9 +58,9 @@ export class LiveVoice {
   private onEvent(ev: any) {
     switch (ev.type) {
       case "session.started": this.onState("listening"); break;
-      case "session.input_transcript.delta": this.onCaption("user", ev.delta); this.onActivity(); break;
+      case "session.input_transcript.delta": this.caption("user", ev.delta); this.onActivity(); break;
       case "session.output_transcript.delta":
-        this.onCaption("purser", ev.delta);
+        this.caption("purser", ev.delta);
         this.onActivity();
         this.onState("speaking");
         clearTimeout(this.speakingTimer);
@@ -64,6 +69,13 @@ export class LiveVoice {
       case "session.closed": this.cleanup(); this.onState("idle"); break;
       case "error": this.onState("error", ev.error?.message || "Voice error"); break;
     }
+  }
+
+  private caption(who: "user" | "purser", delta: string) {
+    const now = Date.now();
+    const fresh = this.lastCaption.who !== who || now - this.lastCaption.at > CAPTION_GAP_MS;
+    this.lastCaption = { who, at: now };
+    this.onCaption(who, delta, fresh);
   }
 
   stop() {

@@ -5,6 +5,8 @@ import { api, Card } from "./api";
 import { ChartCard, ViewCard } from "./ChartCard";
 import { ContractCard, ContractClauseCard, ContractDeadlinesCard, ContractReviewCard, LiabilitiesCard } from "./ContractCard";
 import { FxRatesCard, InvoiceCard, RevenueCard } from "./RevenueCard";
+import { MailListCard, MailThreadCard, MeetingsCard, TasksCard, TicketsCard } from "./MailCards";
+import { FlightOptionsCard, HotelOptionsCard, PaymentCard } from "./FlightCard";
 
 function useLoad<T>(path: string | null, bump = 0) {
   const [data, setData] = useState<T | null>(null);
@@ -56,7 +58,7 @@ function ProposalCard({ id, bump, onChanged }: { id: string; bump: number; onCha
         <div className="actions">
           <button className="btn btn-ok" disabled={busy} onClick={() => act("confirm")}>Confirm</button>
           <button className="btn" disabled={busy} onClick={() => act("cancel")}>Cancel</button>
-          <span className="hint">or say “haan” / “yes” after Purser reads it out</span>
+          <span className="hint">or say “yes” / “approve” after Purser reads it out</span>
         </div>
       )}
       {msg && <p className="hint" role="status">{msg}</p>}
@@ -347,6 +349,14 @@ export function CardView({ card, bump, onChanged, onOpen }: { card: Card; bump: 
       counterparty: card.counterparty, contract: card.contract, undecided_only: card.undecided_only }} />;
     case "contract_deadlines": return <ContractDeadlinesCard days={card.days} bump={bump} />;
     case "contract_clause": return <ContractClauseCard findingId={card.finding_id} bump={bump} />;
+    case "meetings": return <MeetingsCard title={card.title} source={card.source} items={card.items || []} />;
+    case "mail_list": return <MailListCard title={card.title} items={card.items || []} />;
+    case "mail_thread": return <MailThreadCard messages={card.messages || []} />;
+    case "flight_options": return <FlightOptionsCard card={card} />;
+    case "hotel_options": return <HotelOptionsCard card={card} />;
+    case "payment": return <PaymentCard card={card} />;
+    case "tasks": return <TasksCard items={card.items || []} />;
+    case "tickets": return <TicketsCard items={card.items || []} />;
     default: return null;
   }
 }
@@ -361,6 +371,10 @@ export function cardKey(c: Card): string {
   if (c.card === "claim_review") return "claim_review";  // one claim under review; the newest replaces it
   if (c.card === "contract_liabilities") return "contract_liabilities";  // one list; new filters replace it
   if (c.card === "contract_deadlines") return "contract_deadlines";
+  if (["meetings", "mail_list", "tasks", "tickets"].includes(c.card)) return c.card;  // the newest list replaces the older one
+  if (c.card === "mail_thread") return "mail_thread:" + c.thread_id;
+  if (c.card === "flight_options" || c.card === "hotel_options") return c.card;  // the newest search replaces the older list
+  if (c.card === "payment") return "payment:" + c.receipt;
   if (c.card === "contract_clause") return "contract_clause:" + c.finding_id;
   return c.card + ":" + (c.proposal_id ?? c.receipt_id ?? c.document_id ?? c.line_id ?? c.user_id ?? c.scope ?? c.ref ?? JSON.stringify(c.items?.map((i: any) => i.ref) ?? ""));
 }
