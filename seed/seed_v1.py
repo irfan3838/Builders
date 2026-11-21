@@ -43,7 +43,7 @@ def _party(ws: int, kind: str, name: str, *aliases: str) -> Party:
     return Party(workspace_id=ws, kind=kind, name=name, normalized_name=normalize_name(name), aliases=list(aliases))
 
 
-async def seed(s: AsyncSession, *, workspace_name: str = "Purser Demo Traders Pvt Ltd (SYNTHETIC)", email_domain: str = "purser.demo") -> dict:
+async def seed(s: AsyncSession, *, workspace_name: str = "Purser Demo Traders Pvt Ltd (SYNTHETIC)", email_domain: str = "purser.demo", demo: bool = False) -> dict:
     ph = PasswordHasher()
     password = os.getenv("SEED_PASSWORD", "purser-demo")
     admin_name = os.getenv("SEED_ADMIN_NAME", "Priya Sharma")  # the finance admin login (AWS demo: "Irfan")
@@ -215,6 +215,10 @@ async def seed(s: AsyncSession, *, workspace_name: str = "Purser Demo Traders Pv
                   subject="Quarter-end expense deadline", body="Please submit all pending expense claims by 30 November.",
                   status="delivered"))
     await s.flush()
+    demo_out: dict = {}
+    if demo:  # AWS demo only (seed/demo_data.py); tests keep the plain seed
+        from seed import demo_data
+        demo_out = await demo_data.enrich_core(s, W=W, admin=priya, lines=lines, email_domain=email_domain, fy=FY)
 
     # ---- budget history: Jul-Sep are an imported historical snapshot (synthetic month-end actuals, no bills).
     # October is left OPEN on purpose: closing it (by voice) completes three closed months and surfaces the trend.
@@ -223,6 +227,7 @@ async def seed(s: AsyncSession, *, workspace_name: str = "Purser Demo Traders Pv
     admin = Actor(priya.id, W, priya.role, priya_p.id, priya.display_name)
     snapshot = {"IT & Cloud": (15_000, 18_000, 18_000), "Events": (2_400, 1_000, 1_500), "Office Supplies": (3_000, 3_500, 2_900),
                 "Logistics": (2_000, 2_100, 1_900), "Conveyance": (1_200, 1_200, 1_300)}
+    snapshot.update(demo_out.get("snapshot", {}))
     for i, m in enumerate((date(2026, 7, 1), date(2026, 8, 1), date(2026, 9, 1))):
         for cat, actuals in snapshot.items():
             await budget.post(s, W, lines[cat].id, "spent", actuals[i] * L, "imported_actual", source_type="snapshot",
@@ -231,13 +236,17 @@ async def seed(s: AsyncSession, *, workspace_name: str = "Purser Demo Traders Pv
         _m, nxt, rows = await bm.plan_close(s, admin, date(2026, 11, 21), m.isoformat()[:7], variances={}, carry_over=[])
         await bm.apply_close(s, admin, m, nxt, rows, None, source="imported_snapshot")
     await s.flush()
-    rev = await _seed_revenue(s, admin, customers)
+    rev = await _seed_revenue(s, admin, customers, demo=demo)
     ctr = await _seed_contracts(s, admin)
+    if demo:
+        from seed.demo_data import CONTRACTS
+        ctr |= await _seed_contracts(s, admin, CONTRACTS)
+        ctr |= {"demo_employees": demo_out["employees"], "demo_pending_leave": demo_out["pending_leave_refs"]}
     return {**rev, **ctr, "workspace_id": W, "neha_id": neha.id, "neha_leave_ref": lr.ref, "priya_id": priya.id, "arjun_id": arjun.id, "travel_line_id": lines["Travel"].id,
             "reservation_id": rs.id, "arjun_party_id": arjun_p.id, "priya_party_id": priya_p.id, "neha_claim_ref": c.ref}
 
 
-async def _seed_contracts(s: AsyncSession, admin) -> dict:
+async def _seed_contracts(s: AsyncSession, admin, samples: dict | None = None) -> dict:
     """Synthetic agreements (seed/contract_samples.py), read with the deterministic rules only (no model call at seed
     time), so seeded findings carry low confidence and every run gives the same rows."""
     from app.services.contracts import review as ctr_review
@@ -246,7 +255,7 @@ async def _seed_contracts(s: AsyncSession, admin) -> dict:
 
     ours = await ctr_review.our_names(s, admin)
     out = {}
-    for key, c in SEEDED.items():
+    for key, c in (samples or SEEDED).items():
         staged = await ctr_review.analyse(c["text"], c["filename"], ours, use_model=False)
         row = Contract(workspace_id=admin.workspace_id, ref="pending", title=staged["title"][:200] + " (synthetic)",
                        contract_type=staged["contract_type"], counterparty_name=staged["counterparty"],
@@ -263,7 +272,7 @@ async def _seed_contracts(s: AsyncSession, admin) -> dict:
     return out
 
 
-async def _seed_revenue(s: AsyncSession, admin, customers: dict) -> dict:
+async def _seed_revenue(s: AsyncSession, admin, customers: dict, demo: bool = False) -> dict:
     """Revenue demo rows (ALL SYNTHETIC), written through the revenue services so every figure is computed the
     same way as at run time. Business date 21 Nov 2026.
 
@@ -315,25 +324,29 @@ async def _seed_revenue(s: AsyncSession, admin, customers: dict) -> dict:
 
         lotus = customers["lotus"]
         reminders.add(ss, rv, due_on=today, text="Call Lotus Hospitality about the Rs 27,200 balance", client_id=lotus.id)
+        if demo:
+            from seed.demo_data import enrich_revenue
+            enrich_revenue(ss, rv)
         return {"northwind_client_id": nw.id, "northwind_nov_ref": rows[(2026, 11)].ref, "northwind_oct_ref": octo.ref}
 
     return await s.run_sync(go)
 
 
-async def reset_and_seed(url: str | None = None) -> dict:
+async def reset_and_seed(url: str | None = None, demo: bool = False) -> dict:
     sm = db.configure(url)
     async with db.engine().begin() as conn:
         tables = ", ".join(t.name for t in reversed(Base.metadata.sorted_tables))
         await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
     async with sm() as s, s.begin():
-        return await seed(s)
+        return await seed(s, demo=demo)
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--reset", action="store_true", required=True)
-    ap.parse_args()
+    ap.add_argument("--demo", action="store_true", help="add the larger synthetic demo dataset (seed/demo_data.py)")
+    args = ap.parse_args()
     from dotenv import load_dotenv
 
     load_dotenv()
-    print(asyncio.run(reset_and_seed()))
+    print(asyncio.run(reset_and_seed(demo=args.demo)))
