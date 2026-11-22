@@ -1,4 +1,3 @@
-# Demo script: working end to end on fresh input
 
 **Live URL:** https://d342yicbppf96p.cloudfront.net (AWS us-west-2, CloudFront → ALB → ECS Fargate → RDS)
 **Logins:** admin (full access, linked real Gmail/Calendar), CEO (read-only) and employee. Credentials are provided in the submission form, not in the repo.

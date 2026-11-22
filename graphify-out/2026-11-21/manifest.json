@@ -96,9 +96,9 @@
     "semantic_hash": ""
   },
   "app/auth.py": {
-    "mtime": 1795274019.9483447,
-    "seen": 1795280335.7994888,
-    "ast_hash": "e469235f03c615c460b409058a0b99d2",
+    "mtime": 1795282789.639392,
+    "seen": 1795282986.18561,
+    "ast_hash": "11d3697285631b43571c42c7bea8c5fc",
     "semantic_hash": ""
   },
   "app/config.py": {
@@ -132,9 +132,9 @@
     "semantic_hash": ""
   },
   "app/models.py": {
-    "mtime": 1795277272.197229,
-    "seen": 1795280335.7999017,
-    "ast_hash": "476bb636bd3ebe5f25d312de2157ee68",
+    "mtime": 1795282789.6401727,
+    "seen": 1795282986.185634,
+    "ast_hash": "9a3a7ef55ab04abb5a41ee3edd1251a4",
     "semantic_hash": ""
   },
   "app/money.py": {
@@ -228,9 +228,9 @@
     "semantic_hash": ""
   },
   "pyproject.toml": {
-    "mtime": 1795242852.3521178,
-    "seen": 1795245608.1343796,
-    "ast_hash": "18b458f72e7e76d9be05677b46812e5d",
+    "mtime": 1795282927.4027903,
+    "seen": 1795282986.1859117,
+    "ast_hash": "81ecc45c334d758a8d6fede523de646d",
     "semantic_hash": ""
   },
   "scripts/__init__.py": {
@@ -1020,21 +1020,21 @@
     "semantic_hash": ""
   },
   "infra/terraform/app.tf": {
-    "mtime": 1795268775.681766,
-    "seen": 1795270693.0333548,
-    "ast_hash": "",
+    "mtime": 1795276212.6864266,
+    "seen": 1795282986.1858706,
+    "ast_hash": "94209b500bcf6cbb8fc39b864e557e72",
     "semantic_hash": ""
   },
   "infra/terraform/data.tf": {
-    "mtime": 1795268775.5828292,
-    "seen": 1795270693.0333583,
-    "ast_hash": "",
+    "mtime": 1795276212.6596203,
+    "seen": 1795282986.1858735,
+    "ast_hash": "cabb88fdf7b6dcead94886b94eab18a4",
     "semantic_hash": ""
   },
   "infra/terraform/main.tf": {
     "mtime": 1795254267.7802067,
-    "seen": 1795270693.0333614,
-    "ast_hash": "",
+    "seen": 1795282986.1858776,
+    "ast_hash": "2f641c7692a5bcf9f2036d827024bb1a",
     "semantic_hash": ""
   },
   "seed/demo_data.py": {
@@ -1176,9 +1176,9 @@
     "semantic_hash": ""
   },
   "app/services/travel/airports.py": {
-    "mtime": 1795275570.567502,
-    "seen": 1795280335.8070319,
-    "ast_hash": "432982a69c18d8684a7d01636c42b25f",
+    "mtime": 1795280525.7943246,
+    "seen": 1795282986.1858428,
+    "ast_hash": "5a58148864519871d2253b48f4f26653",
     "semantic_hash": ""
   },
   "app/services/travel/booking.py": {
@@ -1218,9 +1218,9 @@
     "semantic_hash": ""
   },
   "seed/role_users.py": {
-    "mtime": 1795279993.5454016,
-    "seen": 1795280335.8095455,
-    "ast_hash": "13a5e76e86af7547d6b3c56504fd233a",
+    "mtime": 1795282789.6415372,
+    "seen": 1795282986.18595,
+    "ast_hash": "36e962afd011c801ca5c86e546579b9e",
     "semantic_hash": ""
   },
   "tests/b25_helpers.py": {
@@ -1236,9 +1236,9 @@
     "semantic_hash": ""
   },
   "tests/test_b25_briefing.py": {
-    "mtime": 1795276120.2787707,
-    "seen": 1795280335.8102949,
-    "ast_hash": "d0e09f4eb0dff6361bc8d8de78ad29eb",
+    "mtime": 1795280844.0074239,
+    "seen": 1795282986.1859872,
+    "ast_hash": "deab73ecdb421b4c1ffca9f522c8d0aa",
     "semantic_hash": ""
   },
   "tests/test_b25_clarify.py": {
@@ -1248,27 +1248,27 @@
     "semantic_hash": ""
   },
   "tests/test_b25_google.py": {
-    "mtime": 1795276544.2707794,
-    "seen": 1795280335.8103075,
-    "ast_hash": "b6464a3dc723db992c5dbfe109466155",
+    "mtime": 1795280844.0093834,
+    "seen": 1795282986.1859937,
+    "ast_hash": "e8dda23798d1261b0c2b44702afdff0c",
     "semantic_hash": ""
   },
   "tests/test_b25_travel.py": {
-    "mtime": 1795280246.1422489,
-    "seen": 1795280335.810313,
-    "ast_hash": "cd3841d7fcd6973bef80010a70abcaaa",
+    "mtime": 1795280542.650856,
+    "seen": 1795282986.1859972,
+    "ast_hash": "3db10bb300f1cd8e6dd38e7b24e22db6",
     "semantic_hash": ""
   },
   "tests/test_roles_rbac.py": {
-    "mtime": 1795274650.4461267,
-    "seen": 1795280335.8115804,
-    "ast_hash": "05f539e5e4d1444dbf4387ed21e22c17",
+    "mtime": 1795281431.7237487,
+    "seen": 1795282986.1860495,
+    "ast_hash": "ae8c7491fe1095fbf58c7d31ad807aab",
     "semantic_hash": ""
   },
   "tests/test_trips.py": {
-    "mtime": 1795278264.799273,
-    "seen": 1795280335.8115938,
-    "ast_hash": "37ab8247cbc1e6c5a5496965e9b89c7f",
+    "mtime": 1795280859.0936177,
+    "seen": 1795282986.186058,
+    "ast_hash": "21ad87b171c52761a15429bc7c3150e7",
     "semantic_hash": ""
   },
   "web/src/FlightCard.tsx": {
