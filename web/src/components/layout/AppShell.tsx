@@ -1,7 +1,6 @@
 // AppShell: sidebar | main column (workspace or a view, composer) | Artifact Panel, over the ambient ribbons.
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
-import { Menu } from "lucide-react";
 import { ease } from "../../animations/tokens";
 import { usePurser } from "../../state/store";
 import AmbientRibbons from "../assistant/AmbientRibbons";
@@ -18,14 +17,6 @@ export default function AppShell() {
   const P = usePurser();
   const A = useAssistant();
   const [dragging, setDragging] = useState(false);
-  const [navOpen, setNavOpen] = useState(false);  // phone drawer (<=760px); ignored on desktop
-
-  useEffect(() => {
-    if (!navOpen) return;
-    const k = (e: KeyboardEvent) => { if (e.key === "Escape" && !document.querySelector(".scrim")) setNavOpen(false); };
-    addEventListener("keydown", k);
-    return () => removeEventListener("keydown", k);
-  }, [navOpen]);
   const energy = { listening: 1, speaking: 0.8, processing: 0.6, connecting: 0.4, success: 0.7 }[P.orb as string] ?? 0;
 
   useEffect(() => {
@@ -48,14 +39,9 @@ export default function AppShell() {
     <div className="shell" data-view={P.view === "workspace" ? "workspace" : "other"}>
       <AmbientRibbons energy={energy} anchor="#purser-orb, .mini-orb" />
       <div className="vignette" />
-      <PurserSidebar open={navOpen} onNavigate={() => setNavOpen(false)} />
-      {navOpen && <div className="nav-scrim" onClick={() => setNavOpen(false)} aria-hidden="true" />}
+      <PurserSidebar />
       <main className="main" id="main">
-        <div className="m-bar">
-          <button className="icon-btn" onClick={() => setNavOpen(true)} aria-label="Open navigation" aria-expanded={navOpen} aria-controls="purser-nav"><Menu size={22} /></button>
-          <span className="m-wordmark" aria-hidden="true">purser</span>
-        </div>
-        {!P.online && <div className="flag flag-warn offline-flag" role="status">You are offline. Purser will reconnect when the network returns; nothing is lost.</div>}
+        {!P.online && <div className="flag flag-warn" role="status" style={{ margin: "12px 40px 0" }}>You are offline. Purser will reconnect when the network returns; nothing is lost.</div>}
         <AnimatePresence mode="wait" initial={false}>
           <motion.div key={P.view === "workspace" ? "ws" : P.view} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
             initial={{ opacity: 0, y: 12, filter: "blur(6px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)", transitionEnd: { filter: "none" } }} exit={{ opacity: 0, y: -10, filter: "blur(6px)" }}
