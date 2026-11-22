@@ -607,7 +607,7 @@ timeline
 | Eval cost per task (text agent) | Real-time voice audio cost is not included in the per-task figures |
 | Its own append-only ledger | **No Tally / Zoho sync yet** (roadmap above); no GST filing, payroll or bank reconciliation |
 
-Built with Claude Code under the builder's direction. Some budget, revenue and contract logic is adapted from the builder's earlier work. Full details: [`HONEST_NOTE.md`](HONEST_NOTE.md).
+Built with Claude Code under the builder's direction. Full details: [`HONEST_NOTE.md`](HONEST_NOTE.md).
 
 ---
 

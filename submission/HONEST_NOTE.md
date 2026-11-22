@@ -1,6 +1,8 @@
 # Honest note: built, reused, simulated
 
 ## What we built at the event
+Every commit in this repository falls between **20 Nov 2026, 21:01 IST** (initial scaffold) and the code freeze. Check with `git log --reverse`.
+
 The application was written during the hackathon with **Claude Code (an AI coding agent), under the builder's direction**. The builder chose the product, the scope, the features, the roles, the UX and the design direction, and reviewed and tested by voice. Claude Code wrote most of the code. Independent Claude Sonnet agents wrote and ran the automated tests. The file-by-file log is in [`docs/AUTHORSHIP.md`](../docs/AUTHORSHIP.md).
 
 Built at the event:
@@ -12,7 +14,6 @@ Built at the event:
 - The eval harness and 46 scenarios, Terraform for AWS, and the deploy scripts.
 
 ## What we reused
-- **Budget, revenue and contract-scanning logic** from the builder's earlier work, adapted and integrated here (listed in `docs/AUTHORSHIP.md`).
 - **Open-source libraries:** FastAPI, SQLAlchemy, Alembic, Pydantic, OpenAI Python SDK and Agents SDK, pypdf/pypdfium2, React, Vite, three.js, Motion, ECharts, lucide-react.
 - **External APIs:** OpenAI (voice, agent, vision), Google Gmail and Calendar, SerpAPI (Google Flights/Hotels), Frankfurter (ECB FX rates), LangSmith (tracing).
 
