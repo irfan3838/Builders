@@ -1,0 +1,7 @@
+# Default rules, but skip graphify-out/: generated knowledge-graph cache full of file content hashes (false positives).
+[extend]
+useDefault = true
+
+[allowlist]
+description = "generated graphify knowledge graph"
+paths = ['''^graphify-out/''']

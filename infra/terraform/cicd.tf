@@ -7,6 +7,12 @@ variable "github_repo" {
   default     = "irfan3838/Builders"
 }
 
+variable "github_sub_prefix" {
+  description = "Immutable OIDC subject prefix this repo uses (gh api repos/OWNER/REPO/actions/oidc/customization/sub)."
+  type        = string
+  default     = "repo:irfan3838@262069549/Builders@1466181812"
+}
+
 resource "aws_iam_openid_connect_provider" "github" {
   url            = "https://token.actions.githubusercontent.com"
   client_id_list = ["sts.amazonaws.com"]
@@ -27,7 +33,7 @@ data "aws_iam_policy_document" "github_assume" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:ref:refs/heads/main"]
+      values   = ["repo:${var.github_repo}:ref:refs/heads/main", "${var.github_sub_prefix}:ref:refs/heads/main"]
     }
   }
 }
