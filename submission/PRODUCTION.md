@@ -4,7 +4,7 @@ Purser moves money, so we designed it to **fail closed**. When something breaks,
 
 This page lists each failure we planned for, the code or setting that handles it, and the gaps we know about. Every row points to a file you can open.
 
-**Live:** https://d342yicbppf96p.cloudfront.net/health → `{"ok":true}` (checked 22 Nov 2026). ECS service `munshi`: task definition `munshi:12`, image `munshi:3ff4f83`, rollout `COMPLETED`, 1/1 tasks running.
+**Live:** https://d342yicbppf96p.cloudfront.net/health → `{"ok":true}` (checked 22 Nov 2026). ECS service `munshi`: task definition `munshi:15`, image `munshi:7bb2f04`, rollout `COMPLETED`, 1/1 tasks running. Deployed by GitHub Actions from `main`.
 
 ---
 
@@ -56,7 +56,7 @@ This page lists each failure we planned for, the code or setting that handles it
 
 - **Agent eval with an exact database diff:** 46 conversations / 90 turns. 22 business tables are diffed before and after every turn, so any unexpected change is a hard fail. Result on the shipped engine: **46/46 tasks, 0 wrong writes**. The safety tier covers prompt injection, wrong role, a "yes" with nothing pending, and self-approval. See [`EVIDENCE.md`](EVIDENCE.md).
 - **Automated tests:** about 990 test functions (~1,350 collected cases) against a real Postgres, written and run by independent Sonnet tester agents. The last full run: 1,347 passed, 2 failed (both wording assertions, unrelated to money paths).
-- **Real redeploys without data loss:** the demo workspace was seeded on 21 Nov and has survived every redeploy since, through task definition `munshi:12`, with no reseed.
+- **Real redeploys without data loss:** the demo workspace was seeded on 21 Nov and has survived every redeploy since, through task definition `munshi:15`, with no reseed.
 
 ## 3. Recovery
 
@@ -77,7 +77,7 @@ We'd rather you read these here than discover them yourself:
 | **One ECS task** | Live-update (SSE) subscribers are held in memory | Move fan-out to Postgres `LISTEN/NOTIFY` or Redis, then run 2+ tasks across AZs |
 | **RDS single-AZ, 1-day backups, no deletion protection** | Lowest cost for a demo | `multi_az = true`, 7–30 day backups, deletion protection |
 | **No CloudWatch alarms; logs kept 7 days** | Not needed to run the demo | Alarms on 5xx, unhealthy hosts, RDS CPU/storage; 30+ day logs |
-| **Deploys are Terraform + scripts, not a GitHub Actions deploy job** | CI runs hygiene checks only | OIDC-based deploy workflow with a smoke test |
+| **Infrastructure changes are applied by hand; app deploys have no approval gate** | Every push to `main` deploys through GitHub Actions (OIDC, migrate, roll, `/health` check), but Terraform runs locally with local state | Remote Terraform state (S3), a plan/apply workflow, and a protected production environment with required review |
 | **The eval covers the text path only** | Voice uses the same `run_turn` but wasn't evaluated end to end | Replay recorded audio through the voice bridge in the eval |
 | **p95 latency ≈ 15 s on complex turns** | Multi-tool workflows with retries | Stream partial results; cache briefings |
 

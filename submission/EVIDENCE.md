@@ -91,7 +91,7 @@ Agent traces for every turn (tools called, tokens, latency) are captured in **La
 - **Append-only ledgers:** `budget_movements` and the leave ledger are never updated in place. Balances are always the sum of their movements.
 - **Audit trail:** every confirmed change writes an `audit_events` row (actor, action, before/after, linked proposal and receipt) in the **same transaction** as the change.
 - **Receipts are idempotent:** saying "haan" twice returns the same receipt ID, and the ledger moves once.
-- **Across deployments:** the demo workspace was seeded on 21 Nov. Since then the ECS service has been redeployed through several task definitions (up to `munshi:12`, image `3ff4f83`) **without reseeding**. Logins, ledgers and history carried over (round 6 added role logins with `seed-roles`, which adds data without a reset).
+- **Across deployments:** the demo workspace was seeded on 21 Nov. Since then the ECS service has been redeployed through several task definitions (up to `munshi:15`, image `7bb2f04`) **without reseeding**. Logins, ledgers and history carried over (round 6 added role logins with `seed-roles`, which adds data without a reset).
 
 ### How a judge can verify persistence live (2 minutes)
 1. Log in and say: *"Travel budget mein kitna bacha hai?"* Note the figure.
@@ -102,7 +102,7 @@ Agent traces for every turn (tools called, tokens, latency) are captured in **La
 
 ### Live deployment status (checked 22 Nov 2026)
 - `https://d342yicbppf96p.cloudfront.net/health` → `{"ok":true}`
-- ECS service `munshi` (us-west-2): 1/1 running task, task definition `munshi:12`, image `munshi:3ff4f83`, rollout `COMPLETED`, `PURSER_WORKFLOWS=1`, 1 vCPU / 2 GB.
-- The eval reports were produced on the workflow engine from `8c39078`. `2dcc7dc` adds Devanagari spoken-amount grounding, invoice lookup for payments and travel-search memory. Those fixes are covered by 25 extra Sonnet tests (`a7d3afb`), but the 90-turn eval was **not** re-run on them. The live build `3ff4f83` adds only a visual UI fix on top.
+- ECS service `munshi` (us-west-2): 1/1 running task, task definition `munshi:15`, image `munshi:7bb2f04`, rollout `COMPLETED`, `PURSER_WORKFLOWS=1`, 1 vCPU / 2 GB.
+- The eval reports were produced on the workflow engine from `8c39078`. `2dcc7dc` adds Devanagari spoken-amount grounding, invoice lookup for payments and travel-search memory. Those fixes are covered by 25 extra Sonnet tests (`a7d3afb`), but the 90-turn eval was **not** re-run on them. The live build `7bb2f04` adds only visual UI fixes (ribbons, phone-width layout) and the deploy pipeline on top; no backend or agent code.
 
 How it stays up when things fail (timeouts, fallbacks, rollback, known gaps): [`PRODUCTION.md`](PRODUCTION.md).

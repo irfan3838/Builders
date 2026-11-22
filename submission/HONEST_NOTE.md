@@ -36,7 +36,7 @@ Built at the event:
 - The eval is **text-path only, single runs, 90 turns**. The voice channel uses the same engine but was not evaluated end to end.
 - p95 latency is about 15 s on complex turns. Simple confirmations take about 0.1 s.
 - Organiser rule: no GPUs and no Amazon Bedrock. All AI runs through the OpenAI API, on CPU-only Fargate.
-- CI/CD: the repository has hygiene CI (forbidden files, gitleaks). Deployment is done with Terraform and scripts (`docs/deployment.md`), not yet with a GitHub Actions deploy job.
+- CI/CD: the repository has hygiene CI (forbidden files, gitleaks). Infrastructure is Terraform, applied by hand. App deploys run from GitHub Actions on every push to `main` (`.github/workflows/deploy.yml`, OIDC role, no stored AWS keys): build, migrate, roll ECS, check `/health`. The pipeline was added on 22 Nov; its first successful run deployed `7bb2f04`.
 - Infrastructure is sized for a demo: one ECS task, single-AZ RDS with 1-day backups, no CloudWatch alarms. The production steps are listed in [`PRODUCTION.md`](PRODUCTION.md) §4.
-- The 90-turn eval ran on commit `8c39078`. The live build is `3ff4f83`: it adds targeted agent fixes (in `2dcc7dc`, covered by extra tests) and a visual-only UI fix (ribbons behind the cards). The full eval was not re-run on it.
+- The 90-turn eval ran on commit `8c39078`. The live build is `7bb2f04`: it adds targeted agent fixes (in `2dcc7dc`, covered by extra tests), visual-only UI fixes (ribbons behind the cards, a phone-width layout) and the deploy pipeline. No backend or agent code changed after `2dcc7dc`. The full eval was not re-run on it.
 - Market figures in the README (MSME count, language reach) come from public government and census sources, linked there. The persona "Priya" is illustrative, not a customer interview.
