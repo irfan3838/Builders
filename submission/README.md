@@ -4,7 +4,7 @@
 
 What makes it different: **the AI can only propose.** The server must hear a spoken "haan" itself, every amount must come from the user's own words, and plain code writes the ledger.
 
-🌐 **Live on AWS:** https://d342yicbppf96p.cloudfront.net  ·  📦 **Code:** https://github.com/irfan3838/Builders (branch `build/munshi-mvp`)
+🌐 **Live on AWS:** https://d342yicbppf96p.cloudfront.net  ·  📦 **Code:** https://github.com/irfan3838/Builders
 
 ---
 
