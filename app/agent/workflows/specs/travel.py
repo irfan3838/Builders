@@ -16,14 +16,16 @@ WORKFLOWS = [
        "invent a flight, time or fare."), required=("search_flights",)),
     W("book_flight", M, "Book a flight from the list: 'book the cheapest', 'the 9:25 one', 'option 3'.",
       ("search_flights", "propose_flight_booking"),
-      ("Call propose_flight_booking with that option id.", "Read 'say'; ask; stop.", _AFTER)),
+      ("Use the search_id and option id from 'Last flight search shown' in the Situation; call search_flights only "
+       "if there is none.", "Call propose_flight_booking with that search_id and option id.", "Read 'say'; ask; stop.",
+       _AFTER)),
     W("trip", M, "A whole trip with a hotel, or a hotel: 'plan my Mumbai trip 24 to 26', 'flight and hotel', "
       "'hotel bhi chahiye', 'book both', or booking for someone else ('book Rahul's trip').",
       ("get_my_location", "search_flights", "search_hotels", "propose_trip_booking", "propose_flight_booking",
        "find_people"),
       ("Never assume an origin city; use the one named earlier in the Situation, else ask.",
-       "search_flights for the outbound day if not already shown and search_hotels for the stay (check_in = arrival "
-       "day).", "Ask which flight and which hotel in one short question, or take 'the cheapest of both'.",
+       "Reuse the flight / hotel search_id from the Situation when it matches the route and dates; otherwise "
+       "search_flights for the outbound day and search_hotels for the stay (check_in = arrival day).", "Ask which flight and which hotel in one short question, or take 'the cheapest of both'.",
        "Then propose_trip_booking with both options (a flight only: propose_flight_booking).",
        "For someone else (admin, HR, finance or their manager): resolve them with find_people and pass "
        "for_user_id; pass email_to if the user named an address.", "Read 'say'; ask; stop.", _AFTER),

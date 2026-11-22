@@ -161,6 +161,23 @@ def _remember(state: dict, user_text: str, reply: str) -> None:
     state["recent"] = (state.get("recent", []) + [{"u": user_text[:300], "a": reply[:300]}])[-RECENT_KEEP:]
 
 
+def _remember_searches(state: dict, ui: list[dict]) -> None:
+    """Keep the latest flight / hotel search (its id and options) across turns, so 'book the cheapest' or 'hotel
+    bhi chahiye' in a later turn uses the real search instead of inventing an id or searching again."""
+    for c in ui:
+        if c.get("card") == "flight_options" and c.get("search_id"):
+            o, d = c.get("origin") or {}, c.get("destination") or {}
+            state["flight_search"] = {
+                "search_id": str(c["search_id"]), "route": f"{o.get('iata', '?')}->{d.get('iata', '?')}", "date": c.get("date"),
+                "options": [f"{x.get('id')}: {x.get('airline')} {x.get('flight_no') or ''} {x.get('depart_time')} "
+                            f"Rs{x.get('price_inr')}" for x in (c.get("options") or [])[:6]]}
+        elif c.get("card") == "hotel_options" and c.get("search_id"):
+            state["hotel_search"] = {
+                "search_id": str(c["search_id"]), "city": c.get("city"), "dates": f"{c.get('check_in')} to {c.get('check_out')}",
+                "options": [f"{x.get('id')}: {x.get('name')} Rs{x.get('price_per_night_inr')}/night"
+                            for x in (c.get("options") or [])[:6]]}
+
+
 def _kill(state: dict, wf_name: str | None, reply: str) -> None:
     """Workflow finished: drop it, keep one summary line."""
     if wf_name:
@@ -186,6 +203,13 @@ def _brief(state: dict, pending: dict | None, note: str = "") -> str:
         parts.append(f"Active workflow {act['name']} ({act.get('status')}); its last message: {act.get('question', '')}")
     if pending:
         parts.append(f"Change waiting for confirmation: {pending.get('say')}")
+    fs, hs = state.get("flight_search"), state.get("hotel_search")
+    if fs:
+        parts.append(f"Last flight search shown (search_id={fs['search_id']}, {fs['route']} on {fs['date']}): "
+                     + "; ".join(fs["options"]) + ". Reuse this search_id to book; search again only for a new route or date.")
+    if hs:
+        parts.append(f"Last hotel search shown (search_id={hs['search_id']}, {hs['city']}, {hs['dates']}): "
+                     + "; ".join(hs["options"]) + ". Reuse this search_id to book; search again only for a new city or dates.")
     if note:
         parts.append(note)
     return "\n".join(parts) or "(new conversation)"
@@ -406,6 +430,7 @@ async def run(actor: Actor, text: str, channel: str = "text") -> EngineResult:
         state["active"] = {"name": wf.name, "status": status, "question": reply[:200], "corrections": corrections}
     else:
         _kill(state, wf.name if wf else "escalated", reply)
+    _remember_searches(state, ctx.ui)
     state["last_offer"] = _offer(ctx.ui) if status not in ("proposal", "asked") else None
     _remember(state, text, reply)
     await _save(actor, state, version)

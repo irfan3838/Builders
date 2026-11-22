@@ -333,8 +333,8 @@ class RecordPayment(RevAction):
         summary = f"Recorded {format_inr(total)} from {rows[0].client.name}: " + "; ".join(lines) + "."
         if follow:
             f = follow[0]
-            summary += (f" {format_inr(inv.remaining_paise(f))} of {inv.label(f)} is still due. Ask the user: leave it outstanding, "
-                        f"raise a new balance invoice, or carry it onto another month's invoice ({f.ref}).")
+            summary += (f" {format_inr(inv.remaining_paise(f))} of {inv.label(f)} is still due. Should I leave it outstanding, "
+                        "raise a new balance invoice, or carry it onto another month's invoice?")
         return Outcome(f"Record payment from {rows[0].client.name}", lines,
                        f"Record {format_inr(total)} received from {rows[0].client.name}?", summary, [_eff(r, rv.today) for r, _, _ in plan])
 

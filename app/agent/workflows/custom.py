@@ -20,7 +20,7 @@ from typing import Literal
 
 from agents import Agent, ModelSettings, Runner
 from openai.types.shared import Reasoning
-from pydantic import BaseModel, create_model
+from pydantic import create_model
 from sqlalchemy import func, or_, select
 
 from app import db

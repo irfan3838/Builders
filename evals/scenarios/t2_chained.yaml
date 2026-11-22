@@ -91,6 +91,17 @@
     - say: "haan approve"
       expect: {tools_any: [confirm_pending_proposal], writes: 1, db: {flight_bookings: 1, hotel_bookings: 1}}
 
+- id: t2_flight_then_book_next_turn
+  tier: 2
+  who: arjun
+  turns:
+    - say: "I need to fly from Pune to Delhi on 3rd December"
+      expect: {tools_any: [search_flights], cards_any: [flight_options], writes: 0}
+    - say: "book the cheapest one"
+      expect: {tools_any: [propose_flight_booking, propose_trip_booking], cards_any: [proposal], writes: 0}
+    - say: "haan"
+      expect: {tools_any: [confirm_pending_proposal], writes: 1, db: {flight_bookings: 1}}
+
 - id: t2_meeting_with_correction
   tier: 2
   who: employee

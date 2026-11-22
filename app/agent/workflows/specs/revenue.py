@@ -23,7 +23,9 @@ WORKFLOWS = [
     W("record_payment", M, "Customer money came in for an invoice: 'paisa aa gaya', 'payment mila', '₹50,000 "
       "aaye', 'Acme ne bheja'. NOT for money we pay out (settle_payment).",
       ("list_client_invoices", "propose_payment"),
-      (_FIND, "Call propose_payment with the S… ref. Pass the amount the user said as plain digits ('38 hazaar' → "
+      ("The invoice being paid is still unpaid: call list_client_invoices with card='outstanding' and the client "
+       "(add period only if the user named a month). Never use card='received' or 'paid' here.",
+       _FIND, "Call propose_payment with the S… ref. Pass the amount the user said as plain digits ('38 hazaar' → "
        "'38000', '2,01,000' → '201000'); omit it for 'pura aa gaya' and whenever the user gave no amount (that means paid in full: do not ask 'full or partial?'). If the user says it is partial ('baaki baad mein'), settled=false.",
        "If the money covers several invoices, propose them together (several refs) when the tool allows, else "
        "propose the first and say the next one follows after confirmation.", _PROPOSE)),

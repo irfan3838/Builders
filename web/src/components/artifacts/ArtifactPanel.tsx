@@ -1,4 +1,4 @@
-// Artifact Panel: the tall glass inspector. Shows only what Purser or the user opened (agent-composed cards),
+// Desk panel: the tall glass inspector. Shows only what Purser or the user opened (agent-composed cards),
 // plus in-flight uploads. Decision controls for the focused claim render into the footer slot.
 import { AnimatePresence, motion } from "motion/react";
 import { FileText, PanelRightOpen, X } from "lucide-react";
@@ -49,12 +49,12 @@ export default function ArtifactPanel() {
     <>
       <AnimatePresence initial={false}>
         {P.panelOpen && (
-          <motion.aside id="artifact-panel" key="panel" className="panel glass" aria-label="Artifact Panel"
-            initial={{ opacity: 0, x: 60, filter: "blur(6px)" }} animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
-            exit={{ opacity: 0, x: 60, filter: "blur(6px)" }} transition={{ duration: dur.panel, ease }}>
+          <motion.aside id="artifact-panel" key="panel" className="panel glass" aria-label="Desk"
+            initial={{ opacity: 0, x: 60 }} animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 60 }} transition={{ duration: dur.panel, ease }}>
             <div className="panel-head">
-              <h2>Artifact Panel</h2>
-              <motion.button className="icon-btn" onClick={() => P.setPanelOpen(false)} aria-label="Close Artifact Panel" whileHover={{ rotate: 90 }} transition={{ duration: 0.2 }}>
+              <h2>Desk</h2>
+              <motion.button className="icon-btn" onClick={() => P.setPanelOpen(false)} aria-label="Close Desk" whileHover={{ rotate: 90 }} transition={{ duration: 0.2 }}>
                 <X size={22} />
               </motion.button>
             </div>
@@ -80,8 +80,8 @@ export default function ArtifactPanel() {
       <AnimatePresence>
         {!P.panelOpen && (P.cards.length > 0 || P.uploads.length > 0) && (
           <motion.button className="panel-tab glass" onClick={() => P.setPanelOpen(true)} initial={{ x: 40, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 40, opacity: 0 }}
-            aria-label={`Open Artifact Panel, ${P.cards.length} items`}>
-            <PanelRightOpen size={16} style={{ marginBottom: 6 }} /> Artifacts · {P.cards.length}
+            aria-label={`Open Desk, ${P.cards.length} items`}>
+            <PanelRightOpen size={16} style={{ marginBottom: 6 }} /> Desk · {P.cards.length}
           </motion.button>
         )}
       </AnimatePresence>

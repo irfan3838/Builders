@@ -31,7 +31,7 @@
   --radius: 18px;
   --ease: cubic-bezier(.22, 1, .36, 1);
   --sidebar: 240px;
-  --panel: 440px;
+  --panel: 580px;
   color-scheme: dark;
 }
 
@@ -483,10 +483,10 @@ button.row:hover, .row.clickable:hover { background: rgba(255, 255, 255, .03); }
 .login input:focus { border-color: rgba(140, 240, 191, .55); }
 
 /* ---------------- responsive ---------------- */
-@media (max-width: 1280px) { :root { --panel: 400px; } .workspace { padding: 32px 28px 20px 32px; } .strip { padding: 18px 20px; } .strip .s-big { font-size: 2rem; } }
+@media (max-width: 1280px) { :root { --panel: 520px; } .workspace { padding: 32px 28px 20px 32px; } .strip { padding: 18px 20px; } .strip .s-big { font-size: 2rem; } }
 @media (max-width: 1120px) {
   .shell { grid-template-columns: auto 1fr; }
-  .panel { position: fixed; right: 0; top: 0; z-index: 30; }
+  .panel { position: fixed; right: 0; top: 0; z-index: 30; width: min(640px, 94vw); background: linear-gradient(180deg, #13281f, #0c1c15); }
   .toasts { right: 24px; }
 }
 @media (max-width: 760px) {
