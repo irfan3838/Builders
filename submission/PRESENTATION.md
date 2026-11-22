@@ -4,7 +4,7 @@
 > Reference products: **Zoho Books / Zoho Expense** (finance), **Keka / greytHR** (HR), **Expensify** (claims).
 > What we did: rebuilt their core jobs as **one voice agent** that speaks Hindi, Hinglish and English, and made it **safe enough to move money**.
 
-🌐 **Live on AWS:** https://d342yicbppf96p.cloudfront.net  ·  📦 **Code:** https://github.com/irfan3838/Builders  ·  🧪 **Evidence:** [`EVIDENCE.md`](EVIDENCE.md)
+🌐 **Live on AWS:** https://d342yicbppf96p.cloudfront.net  ·  📦 **Code:** https://github.com/irfan3838/Builders  ·  🧪 **Evidence:** [`EVIDENCE.md`](EVIDENCE.md)  ·  🧱 **Production:** [`PRODUCTION.md`](PRODUCTION.md)
 
 ---
 
@@ -54,6 +54,16 @@ flowchart LR
 ```
 
 > **Six tools, one tired human, and no single source of truth.**
+
+### How big is this?
+
+| | |
+|---|---|
+| 🏭 **~6.3 crore MSMEs** in India (NSS 73rd round), **~7.3 crore** by the 2023-24 ASUSE estimate | Most are micro firms. The "finance team" is one admin, or the owner |
+| 🗣️ Only **~10.6%** of Indians speak English; **~57%** speak Hindi (Census 2011) | English-first, form-first software leaves most managers and owners out |
+| 🧾 Finance, expenses and HR are separate products (Zoho Books / Expense, Tally, Keka, greytHR) | The admin becomes the glue between them |
+
+*Sources are linked in [`README.md`](README.md). The persona "Priya" is illustrative.*
 
 ---
 
@@ -154,11 +164,11 @@ mindmap
 | 📈 **Charts & views** | Bar, line, pie, treemap, heatmap, calendar, sankey; period comparison | *"Sirf Marketing aur Travel dikhao"* |
 | 🔁 **User routines** | Save your own multi-step workflow by chat or in Settings | *"Har Monday ka routine banao: pending bills + overdue invoices"* |
 
-**The scale built in one weekend:** ~18,000 lines of Python, ~4,600 lines of TypeScript, **99+ typed agent tools**, **67 workflows**, 7 role-aware modules, and ~1,350 automated tests.
+**The scale built in one weekend:** ~19,900 lines of Python, ~4,600 lines of TypeScript, **102 typed agent tools**, **67 workflows**, 7 role-aware modules, and ~990 test functions (~1,350 collected cases).
 
 ---
 
-## ⭐ Spotlight: the 3 features no competitor has together
+## ⭐ Spotlight: 3 features we haven't seen combined in one voice product
 
 ```mermaid
 flowchart LR
@@ -485,14 +495,14 @@ quadrantChart
 | Finance + HR + revenue + contracts in one place | Finance only (HR is a separate product) | Accounting | HR only | Expenses | ✗ (no ledger) | ✅ |
 | Voice is the main interface | ✗ | ✗ | ✗ | ✗ | ✅ | ✅ |
 | Hindi / Hinglish conversation | ✗ | ✗ | ✗ | ✗ | Partial | ✅ |
-| AI takes multi-step actions | Assistant features | ✗ | ✗ | Receipt scanning | Talks, can't post to your books | ✅ 99+ tools |
+| AI takes multi-step actions | Assistant features | ✗ | ✗ | Receipt scanning | Talks, can't post to your books | ✅ 102 tools |
 | Server-verified confirmation before any write | n/a | n/a | n/a | n/a | ✗ | ✅ |
 | Every spoken number comes from SQL | n/a | n/a | n/a | n/a | ✗ | ✅ |
 | Charts built on demand by voice | Fixed reports | Fixed reports | Fixed reports | Fixed reports | Ad hoc, unverified | ✅ typed spec |
 
 *Competitor columns describe each product's core experience as we understand it. Several vendors are adding AI features; the gap we target is voice-first plus safe writes to the books.*
 
-> **Our position:** classic SaaS is safe but form-heavy and English-first. AI assistants are fluent but can't safely touch the books. **Purser is the first to offer both: you talk naturally, and the books stay correct.**
+> **Our position:** classic SaaS is safe but form-heavy and English-first. AI assistants are fluent but can't safely touch the books. **Purser aims to offer both: you talk naturally, and the books stay correct.**
 
 ---
 
@@ -521,6 +531,24 @@ flowchart TB
 | Data | PostgreSQL + Alembic, append-only ledgers | Auditable money; data persists across deploys |
 | Infra | Terraform: CloudFront → ALB → Fargate, private RDS, S3, Secrets Manager | 1 vCPU / 2 GB, about **$0.12/hour**. No GPU, no Bedrock (organiser rule) |
 | Observability | CloudWatch logs, `/health`, LangSmith agent traces | See every tool call and its cost |
+
+---
+
+## 🧱 Act 7½: built not to break
+
+Purser **fails closed**: when something breaks, you get a clear message or a labelled fallback. Never a half-write, a double payment or a made-up number.
+
+| Failure | What happens |
+|---|---|
+| The model invents an amount | Write blocked: the amount must appear in the user's own words |
+| "haan" said twice, or a network retry | The same receipt comes back; the ledger moves once |
+| Data changed between preview and yes | Row versions are re-checked; a fresh preview is shown |
+| OpenAI hangs | 90 s turn timeout, capped agent loops, a clear error |
+| Flight search / FX feed down | "Estimated" fares / last cached rate, flagged stale |
+| Mic fails | Typing runs the same agent; a Confirm button replaces "haan" |
+| Bad deploy | ECS circuit breaker rolls back automatically; old task keeps serving |
+
+The full table, with file paths, recovery steps and the **known gaps** (single task, single-AZ RDS, no alarms yet): [`PRODUCTION.md`](PRODUCTION.md).
 
 ---
 
@@ -560,7 +588,7 @@ Built with Claude Code under the builder's direction. Budget, revenue and contra
 
 ```mermaid
 flowchart LR
-    A["🗣️ Speak naturally<br/>Hindi · Hinglish · English"] --> B["🤖 Purser does the routing<br/>67 workflows · 99+ tools"]
+    A["🗣️ Speak naturally<br/>Hindi · Hinglish · English"] --> B["🤖 Purser does the routing<br/>67 workflows · 102 tools"]
     B --> C["🛡️ Server-verified yes<br/>numbers from SQL"]
     C --> D["🧾 Receipt + audit trail<br/>on AWS"]
 ```

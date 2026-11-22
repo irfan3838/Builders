@@ -28,7 +28,7 @@ Raw data is in the repo. Every number below links to its source file.
 | A1 · single agent, `gpt-6-luna` | 42/45 (93%) | 0 | $0.0025 | 39,709 | 0% | 9.5 / 15.1 s |
 | **B · checklist workflows** | **44/45 (98%)** | **0** | **$0.0017** | **6,875** | **20%** | 8.7 / 19.8 s |
 
-### Shipped code, the version running on AWS (`evals/reports/combined-check-20261122/`)
+### Shipped workflow engine (`evals/reports/combined-check-20261122/`)
 
 | Arm | Task success | Wrong writes | $ / successful task | Input tokens / turn | 0-LLM turns | Escalated | p50 / p95 |
 |---|---|---|---|---|---|---|---|
@@ -61,7 +61,7 @@ uv run python -m scripts.eval_run --arm A0,A1,B --parallel --runs 1
 
 ## 2. Engineering checks (automated tests)
 
-- **~1,350 automated tests** (pytest, against a real Postgres), written and run by **independent Sonnet tester agents**. A project hook stops the main coding agent from running tests itself.
+- **~990 test functions (~1,350 collected cases)** (pytest, against a real Postgres), written and run by **independent Sonnet tester agents**. A project hook stops the main coding agent from running tests itself.
 - The latest full run in the workflow round: **1,347 passed, 2 failed.** Both failures are wording assertions that already failed on the previous commit and are unrelated to the workflow engine (source: `docs/workflow-eval-results.md` §10).
 - The independent testers found **real bugs** throughout the build (11 in the first rounds, more in later ones). They were marked as strict xfail with evidence, then fixed. Examples: seed leave counted Fri–Sat as working days; a multi-line email subject broke `EmailMessage`; "nahi nahi 2,01,000" cancelled instead of correcting; employees could see the `budget_change` workflow.
 - `ruff check` is clean on `app/`, `seed/` and `tests/`.
@@ -91,7 +91,7 @@ Agent traces for every turn (tools called, tokens, latency) are captured in **La
 - **Append-only ledgers:** `budget_movements` and the leave ledger are never updated in place. Balances are always the sum of their movements.
 - **Audit trail:** every confirmed change writes an `audit_events` row (actor, action, before/after, linked proposal and receipt) in the **same transaction** as the change.
 - **Receipts are idempotent:** saying "haan" twice returns the same receipt ID, and the ledger moves once.
-- **Across deployments:** the demo workspace was seeded on 21 Nov. Since then the ECS service has been redeployed through several task definitions (up to `munshi:10`, image `8c39078`, the current HEAD) **without reseeding**. Logins, ledgers and history carried over (round 6 added role logins with `seed-roles`, which adds data without a reset).
+- **Across deployments:** the demo workspace was seeded on 21 Nov. Since then the ECS service has been redeployed through several task definitions (up to `munshi:11`, image `2dcc7dc`) **without reseeding**. Logins, ledgers and history carried over (round 6 added role logins with `seed-roles`, which adds data without a reset).
 
 ### How a judge can verify persistence live (2 minutes)
 1. Log in and say: *"Travel budget mein kitna bacha hai?"* Note the figure.
@@ -102,4 +102,7 @@ Agent traces for every turn (tools called, tokens, latency) are captured in **La
 
 ### Live deployment status (checked 22 Nov 2026)
 - `https://d342yicbppf96p.cloudfront.net/health` → `{"ok":true}`
-- ECS service `munshi`: 1 running task, task definition `munshi:10`, image `munshi:8c39078`, rollout `COMPLETED`, `PURSER_WORKFLOWS=1`.
+- ECS service `munshi` (us-west-2): 1/1 running task, task definition `munshi:11`, image `munshi:2dcc7dc`, rollout `COMPLETED`, `PURSER_WORKFLOWS=1`, 1 vCPU / 2 GB.
+- The eval reports were produced on the workflow engine from `8c39078`. `2dcc7dc` adds Devanagari spoken-amount grounding, invoice lookup for payments and travel-search memory. Those fixes are covered by 25 extra Sonnet tests (`a7d3afb`), but the 90-turn eval was **not** re-run on `2dcc7dc`.
+
+How it stays up when things fail (timeouts, fallbacks, rollback, known gaps): [`PRODUCTION.md`](PRODUCTION.md).

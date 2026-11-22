@@ -6,6 +6,14 @@
 
 > Everything below runs live: real OpenAI voice and agent calls, real database writes, live fares. The company data is synthetic (see `HONEST_NOTE.md`).
 
+## Pre-flight (2 minutes before going on stage)
+- [ ] `curl https://d342yicbppf96p.cloudfront.net/health` returns `{"ok":true}`
+- [ ] All three logins work, and the mic permission is granted in Chrome
+- [ ] One travel search returns live fares (not "Estimated")
+- [ ] The test routine from rehearsal has been deleted
+- [ ] The demo files are on the desktop: the receipt PNG and the MSA PDF (+ the scanned copy)
+- [ ] The backup recording and `evals/reports/` are open in a tab
+
 ---
 
 ## 0:00 Login and briefing
@@ -14,7 +22,7 @@
 **Expect:** a spoken role briefing (pending approvals, bills due, overdue invoices, budget alerts, contract deadlines). The same items appear as cards.
 
 ## 0:30 ⭐ Fresh receipt → approved claim
-2. Drag in a **fresh receipt** (not in the eval set) or one the judges bring. Say: *"Arjun ne pay kiya tha, Pune trip ka hai."*
+2. Drag in `~/Downloads/Purser-demo-hotel-receipt-Saptagiri-Pune.png` (fresh: Saptagiri Business Inn, Arjun, 16–19 Nov, ₹4,800 = ₹4,590 + ₹210 GST; not in the repo or the eval set) or a receipt the judges bring. Say: *"Arjun ne pay kiya tha, Pune trip ka hai."*
 3. *"Approve kar do."* → Purser reads the exact effect aloud → *"haan."*
 
 **Expect:** extraction (vendor, amount, date) with the arithmetic checked in code, a duplicate check and a trip-reservation match, then a proposal and a **receipt**. With the seeded ₹4,800 receipt, Travel goes **₹45,000 → ₹45,200**. Say *"haan"* again: the same receipt comes back and nothing posts twice.
@@ -32,10 +40,10 @@
 *Say:* "5 people and 3 apps became 2 sentences and a yes."
 
 ## 3:15 📜 Spotlight: contract liability radar
-7. Drop `evals/contracts/live_demo_northwind_msa_synthetic.pdf` (or the **scanned** version, to show OCR).
+7. Drop `~/Downloads/Purser-demo-MSA-Meridian-Retail.pdf` (fresh, not in the repo), or `…-SCANNED.pdf` (image-only pages) to show vision OCR.
 8. *"Kaunse liabilities humpe hain?"* → *"Agle 60 din ki deadlines."*
 
-**Expect:** a contract review card, then the liabilities **we** bear (trigger, cap in ₹, carve-outs, source clause) and a deadlines timeline (renewal-notice cut-off, expiry, survival end). Review runs in the background, so the card fills in by itself.
+**Expect** (we are the Service Provider): liabilities on us: uncapped indemnity (cl. 7.1), data loss and breach (cl. 6.2), liability cap INR 25,00,000 with carve-outs (cl. 8.2), SLA credits up to 25% (cl. 4.2). Deadlines: **renewal-notice cut-off 15 Dec 2026**, expiry 14 Jan 2027, confidentiality survives 3 years. The card shows the liabilities **we** bear (trigger, cap in ₹, carve-outs, source clause) and a deadlines timeline (renewal-notice cut-off, expiry, survival end). Review runs in the background, so the card fills in by itself.
 *Say:* "The model only points at phrases. Code checks every phrase is really in the contract."
 
 ## 4:15 🔁 Spotlight: teach Purser a routine

@@ -5,7 +5,7 @@ The application was written during the hackathon with **Claude Code (an AI codin
 
 Built at the event:
 - The FastAPI backend, the proposal → confirm → receipt engine, the append-only budget and leave ledgers, the audit trail and document intake.
-- The OpenAI Agents SDK agent (99+ typed tools), the **checklist workflow engine** (67 workflows, picker, verification, kill, escalation) and user routines.
+- The OpenAI Agents SDK agent (102 typed tools), the **checklist workflow engine** (67 workflows, picker, verification, kill, escalation) and user routines.
 - The voice bridge (GPT-Live over WebRTC, Python sideband, server-observed confirmation) and the Hindi/Hinglish/English affirmation classifier.
 - Agent-built charts (typed ChartSpec → vetted SQL), people ops, Gmail/Calendar integration, travel search and contract liability reading.
 - The React + three.js UI (visual direction from a reference screenshot supplied by the builder).
@@ -36,4 +36,7 @@ Built at the event:
 - The eval is **text-path only, single runs, 90 turns**. The voice channel uses the same engine but was not evaluated end to end.
 - p95 latency is about 15 s on complex turns. Simple confirmations take about 0.1 s.
 - Organiser rule: no GPUs and no Amazon Bedrock. All AI runs through the OpenAI API, on CPU-only Fargate.
-- CI/CD: the repository has hygiene CI. Deployment is done with Terraform and scripts (`docs/deployment.md`), not yet with a GitHub Actions deploy job.
+- CI/CD: the repository has hygiene CI (forbidden files, gitleaks). Deployment is done with Terraform and scripts (`docs/deployment.md`), not yet with a GitHub Actions deploy job.
+- Infrastructure is sized for a demo: one ECS task, single-AZ RDS with 1-day backups, no CloudWatch alarms. The production steps are listed in [`PRODUCTION.md`](PRODUCTION.md) §4.
+- The 90-turn eval ran on commit `8c39078`. The live build is `2dcc7dc`, which adds targeted fixes covered by extra tests; the full eval was not re-run on it.
+- Market figures in the README (MSME count, language reach) come from public government and census sources, linked there. The persona "Priya" is illustrative, not a customer interview.

@@ -1,44 +1,25 @@
-# Builders
+# Purser: the back office you can talk to, and trust with money
 
-Hackathon project: an AI-assisted solution to a problem statement that hasn't been announced yet, deployed on AWS.
+A voice-first back office for Indian small businesses: expenses, bills, budgets, revenue, contracts, HR, mail and travel, in **Hindi, Hinglish or English**. The AI only proposes. The server must hear a spoken "haan" itself, and code writes the ledger.
 
-**Status:** Phase 0, setup only. There's no application code or infrastructure yet; the stack will be chosen once the problem statement arrives.
+**Judges, start here → [`submission/README.md`](submission/README.md)**
 
-## Planned approach
+| Submission requirement | Where |
+|---|---|
+| 1. Working demo, end to end on fresh input | Live on AWS: **https://d342yicbppf96p.cloudfront.net** · script: [`submission/DEMO.md`](submission/DEMO.md) |
+| 2. Source code | This repository (FastAPI `app/`, React `web/`, Terraform `infra/terraform/`, tests `tests/`) |
+| 3. Evidence of results | [`submission/EVIDENCE.md`](submission/EVIDENCE.md): baseline comparison (100% vs 89% task success, 8.7x cheaper), outputs on new data, proof that data persists |
+| 4. Honest note | [`submission/HONEST_NOTE.md`](submission/HONEST_NOTE.md) |
+| Story and architecture | [`submission/PRESENTATION.md`](submission/PRESENTATION.md) |
+| Production readiness | [`submission/PRODUCTION.md`](submission/PRODUCTION.md) |
 
-- **AI:** OpenAI API, behind a small replaceable service boundary. An agent is used only where multi-step autonomy actually helps.
-- **Hosting:** AWS. The runtime (App Runner, Lambda + API Gateway, or ECS Fargate) will be picked to fit the solution.
-- **Infra as code:** Terraform, added once the hosting architecture is decided.
-- **CI/CD:** GitHub Actions, using GitHub OIDC for AWS auth (no long-lived keys).
-
-See [`CLAUDE.md`](CLAUDE.md) for the full working rules and phase plan.
-
-## Local setup
-
+## Run it locally
 ```bash
-cp .env.example .env   # then fill in real values locally; never commit .env
+cp .env.example .env            # add OPENAI_API_KEY (other integrations are optional)
+docker compose up -d            # Postgres 16 on :5433
+uv sync && uv run alembic upgrade head
+uv run python -m seed.seed_v1 --reset --demo && uv run python -m seed.role_users
+uv run uvicorn app.main:app --reload
+cd web && npm install && npm run dev
 ```
-
-Run, test, and deploy commands will be added here once the stack is chosen.
-
-## CI
-
-`.github/workflows/ci.yml` runs repository hygiene checks on every push and pull request:
-
-- no committed `.env` files, Terraform state, or private keys
-- no unresolved merge-conflict markers
-- no files over 5 MB
-- secret scanning with gitleaks
-
-Language-specific lint, test, and build steps will be added with the stack.
-
-## Repository layout
-
-```text
-.
-├── CLAUDE.md          # Working rules for AI-assisted development
-├── README.md
-├── .env.example       # Placeholder config, no real secrets
-├── .gitignore
-└── .github/workflows/ci.yml
-```
+Deploying to AWS: [`docs/deployment.md`](docs/deployment.md). All company data in this repository is synthetic.
