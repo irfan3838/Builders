@@ -105,8 +105,20 @@ default or a labelled fallback.
    or cancel. A **receipt** with an ID comes back.
 6. **Email and Calendar** (admin `irfmed38@gmail.com` on the live site): real Gmail folders in Mail, real Calendar
    events with Meet links. Other logins use the in-app inbox.
-7. **HTTP API**: `GET /health`, `POST /api/auth/login`, `POST /api/agent/text` (needs the session cookie and an
-   `X-Conversation-Id` from `POST /api/conversations`). The web app uses these same endpoints.
+7. **HTTP API** (what the web app calls; useful for scripted checks):
+   ```bash
+   B=http://localhost:8000
+   CSRF=$(curl -s -c jar -X POST $B/api/auth/login -H 'content-type: application/json' \
+          -d '{"email":"priya@purser.demo","password":"purser-demo"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["csrf"])')
+   CONV=$(curl -s -b jar -X POST $B/api/conversations -H "X-CSRF-Token: $CSRF" | python3 -c 'import json,sys;print(json.load(sys.stdin)["conversation_id"])')
+   curl -s -b jar -X POST "$B/api/documents?announce=true" -H "X-CSRF-Token: $CSRF" -H "X-Conversation-Id: $CONV" \
+        -F file=@evals/dev/dev_hotel_receipt_synthetic.png          # upload + start reading (like the UI)
+   curl -s -b jar -X POST $B/api/agent/text -H "X-CSRF-Token: $CSRF" -H "X-Conversation-Id: $CONV" \
+        -H 'content-type: application/json' -d '{"text":"Arjun ne pay kiya tha, Pune trip ka hai."}'
+   ```
+   Every POST/PUT/DELETE needs the `csrf` value from the login response as the `X-CSRF-Token` header. If you send
+   an `Origin` header, it must equal `APP_ORIGIN`. Uploads need `?announce=true` and `X-Conversation-Id` so the agent
+   reads the document and knows it is the current one. Without them the file is only stored. `GET /health` is public.
 
 Sample files (synthetic) for the journeys: `evals/dev/dev_hotel_receipt_synthetic.png` (hotel receipt),
 `evals/dev/dev_wrong_total_synthetic.png` (receipt whose printed total is wrong),
@@ -122,14 +134,19 @@ Type these into the composer, or say them. Expected results assume a fresh local
    overdue invoices, budget alerts and contract deadlines, with the same items as cards.
 2. **Budget question:** *"Travel mein kitna bacha hai?"* You get the Travel budget position. The number comes from SQL.
 3. **Receipt to approved claim (core journey):**
-   1. Upload `evals/dev/dev_hotel_receipt_synthetic.png`. Purser reads vendor, amount, date and GST, checks the
-      arithmetic in code, and runs duplicate and trip-match checks.
-   2. *"Arjun ne pay kiya tha, Pune trip ka hai."* A claim is drafted for Arjun against the Pune trip.
-   3. *"Approve kar do."* A proposal card shows the exact effect (amount, budget line, before and after).
-   4. *"haan"*. You get a **receipt** with an ID, and the Travel budget moves.
+   1. Drop `evals/dev/dev_hotel_receipt_synthetic.png` on the page. Purser acknowledges it and reads the vendor,
+      amount (Rs 4,800), date and GST. The arithmetic is checked in code, and it runs duplicate and trip-match checks
+      (it matches Arjun's Pune hotel reservation).
+   2. *"Arjun ne pay kiya tha, Pune trip ka hai."* Purser may ask whether this is the final charge for that
+      reservation. Answer *"haan, final hai"*.
+   3. *"Approve kar do."* A proposal card shows the exact effect. Purser first **submits** the claim (C-number), then
+      **approves** it. Each step is its own proposal, and each needs its own *"haan"*. If it only submitted, say
+      *"Claim approve karo"*. The approval card reads "Travel available becomes Rs 45,200".
+   4. *"haan"*. You get a **receipt** with an ID. After the approval, Travel shows **Rs 45,200** (from Rs 45,000:
+      the reserved amount is released and the actual charge is posted).
    5. *"haan"* again. The **same** receipt comes back and nothing posts twice (idempotent).
-   6. *"Is claim ki history batao."* You see who proposed and approved it, when, the amounts and the source
-      document, from the audit trail.
+   6. *"Is claim ki history batao."* You see who proposed, submitted and approved it, when, the amounts and the
+      source document, from the audit trail.
 4. **Wrong-total catch:** upload `evals/dev/dev_wrong_total_synthetic.png`. Purser flags that the printed total does
    not match the line items.
 5. **Chart you talk to:** *"Kaun paisa dena baaki hai?"* then *"Sirf overdue."* then *"Acme ka amount padho."* A
