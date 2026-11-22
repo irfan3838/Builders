@@ -75,3 +75,6 @@ infra/terraform/terraform.tfvars
 CLAUDE.local.md
 .claude/hooks/
 .claude/settings.json
+
+# Demo video ships in the submission zip, not git (size limit)
+*.mp4

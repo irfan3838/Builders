@@ -1,7 +1,7 @@
 # AGENTS.md: set up, launch and use Purser
 
 **Live deployment (AWS):** https://d342yicbppf96p.cloudfront.net · health check: `GET /health` returns `{"ok":true}`
-**Demo video:** [VIDEO.md](VIDEO.md) · **Slides (PDF, 5 pages):** [Purser-shortlist-slides.pdf](Purser-shortlist-slides.pdf) · **Story, evidence, honest note:** [`submission/`](submission/README.md)
+**Demo video:** [`purser-demo.mp4`](purser-demo.mp4) (4:54, in the submission zip; see [VIDEO.md](VIDEO.md)) · **Slides (PDF, 5 pages):** [Purser-shortlist-slides.pdf](Purser-shortlist-slides.pdf) · **Story, evidence, honest note:** [`submission/`](submission/README.md)
 
 Purser is a voice-first back office for Indian small businesses: expenses, bills, budgets, revenue, contracts, HR,
 mail and travel, in **Hindi, Hinglish or English**. One AI agent (OpenAI) proposes every change. Plain code shows the
@@ -128,32 +128,38 @@ Sample files (synthetic) for the journeys: `evals/dev/dev_hotel_receipt_syntheti
 ## 6. End-to-end journeys
 
 Type these into the composer, or say them. Expected results assume a fresh local seed. Agent turns take about 3-15 s.
+On 22 Nov 2026 these were run on a fresh clone with `docker compose up --build`: admin journeys 1-6, every CEO and employee
+journey, and the refusals. The wording of replies varies from run to run. The numbers come from SQL and do not.
 
 ### Admin (`irfmed38@gmail.com`, or `priya@purser.demo` locally)
 1. **Briefing:** *"Purser, aaj kya pending hai?"* You get a spoken or written briefing: pending approvals, bills due,
    overdue invoices, budget alerts and contract deadlines, with the same items as cards.
-2. **Budget question:** *"Travel mein kitna bacha hai?"* You get the Travel budget position. The number comes from SQL.
-3. **Receipt to approved claim (core journey):**
-   1. Drop `evals/dev/dev_hotel_receipt_synthetic.png` on the page. Purser acknowledges it and reads the vendor,
-      amount (Rs 4,800), date and GST. The arithmetic is checked in code, and it runs duplicate and trip-match checks
-      (it matches Arjun's Pune hotel reservation).
-   2. *"Arjun ne pay kiya tha, Pune trip ka hai."* Purser may ask whether this is the final charge for that
-      reservation. Answer *"haan, final hai"*.
-   3. *"Approve kar do."* A proposal card shows the exact effect. Purser first **submits** the claim (C-number), then
-      **approves** it. Each step is its own proposal, and each needs its own *"haan"*. If it only submitted, say
-      *"Claim approve karo"*. The approval card reads "Travel available becomes Rs 45,200".
-   4. *"haan"*. You get a **receipt** with an ID. After the approval, Travel shows **Rs 45,200** (from Rs 45,000:
-      the reserved amount is released and the actual charge is posted).
-   5. *"haan"* again. The **same** receipt comes back and nothing posts twice (idempotent).
-   6. *"Is claim ki history batao."* You see who proposed, submitted and approved it, when, the amounts and the
-      source document, from the audit trail.
+2. **Budget question:** *"Travel ka poore saal ka budget dikhao"*. You get "FY2026-27 allocated Rs 50,000, Rs 45,000
+   available" and a budget card. *"Travel mein kitna bacha hai?"* answers for **this month** (about Rs 10,000). The
+   numbers come from SQL, never from the model.
+3. **Receipt to approved claim (core journey).** Verified on a fresh `docker compose` seed; replies are in Hinglish:
+   1. Drop `evals/dev/dev_hotel_receipt_synthetic.png` on the page. You get "Hotel Shivneri Residency, Pune ka Rs 4,800
+      ka hotel receipt... Payment kisne ki?" Vendor, amount, date and GST are read, and the arithmetic is checked in code.
+   2. *"Arjun ne pay kiya tha, Pune trip ka hai."* You get "Kya yeh receipt reservation RS1 ke liye final charge hai?"
+      It has matched Arjun's Pune hotel reservation.
+   3. *"haan, final hai"*. A **proposal card**: "Submit Rs 4,800 claim for Arjun Mehta ... replacing reservation RS1
+      on approval?"
+   4. *"haan"* (or *"Approve kar do"*, which also counts as the yes). You get "Claim C14 submitted ... Reference R1"
+      and a receipt card.
+   5. *"Claim C14 approve karo"*. A second proposal: "Approve claim C14 ... Travel available becomes Rs 45,200".
+   6. *"haan"*. You get "Claim C14 approved. Travel available Rs 45,000 → Rs 45,200. Reference R2." The Rs 5,000
+      reservation is released and the Rs 4,800 actual is posted.
+   7. *"haan"* again. "...pehle hi ho chuki hai", so **nothing posts twice** (idempotent).
+   8. *"Is claim ki history batao."* Submitted and approved (dates, who), receipt R2, and an audit-trail card.
+   The claim number (C14) and receipt IDs can differ on the shared live site.
 4. **Wrong-total catch:** upload `evals/dev/dev_wrong_total_synthetic.png`. Purser flags that the printed total does
    not match the line items.
 5. **Chart you talk to:** *"Kaun paisa dena baaki hai?"* then *"Sirf overdue."* then *"Acme ka amount padho."* A
    receivables chart narrows to overdue invoices and reads Acme's amount. Chart, table and speech share one snapshot.
 6. **Contract liability radar:** upload `evals/contracts/live_demo_northwind_msa_synthetic.pdf` (or the scanned
    copy), then ask *"Kaunse liabilities humpe hain?"* then *"Agle 60 din ki deadlines."* You get the liabilities **we**
-   bear (trigger, cap in INR, carve-outs, source clause) and a deadlines timeline. Review runs in the background, so
+   bear across all contracts on file, including the new MSA (trigger, cap in INR, carve-outs, source clause), and a
+   deadlines timeline. Review runs in the background, so
    the card fills in by itself.
 7. **Travel:** *"Arjun ke liye Friday Pune se Mumbai flight aur hotel dhoondo."* then *"Sabse sasta dono book karo."*
    then *"haan"*. You get flight and hotel cards (live fares, or labelled "Estimated"), one whole-trip proposal, and a
