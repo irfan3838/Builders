@@ -67,7 +67,7 @@ A0, A1 and B are one run on the same code and scenarios (run 3); the shipped col
 5. Log out and back in → *"Is claim ki history batao"*: who approved it, when, and the source document, read from RDS.
 6. Log in as **employee** → *"Company ka budget batao"*: refused.
 
-Logins are in the submission form, not in the repo.
+Logins (password `purser-demo`) and the full journeys are in [`AGENTS.md`](../AGENTS.md).
 
 ## 6. Scale built at the event
 
@@ -89,11 +89,7 @@ docs/                plans, architecture, deployment, eval results, authorship l
 
 ## Run it yourself
 ```bash
-cp .env.example .env            # add OPENAI_API_KEY (other integrations are optional)
-docker compose up -d            # Postgres 16 on :5433
-uv sync && uv run alembic upgrade head
-uv run python -m seed.seed_v1 --reset --demo && uv run python -m seed.role_users   # synthetic demo workspace + role logins
-uv run uvicorn app.main:app --reload
-cd web && npm install && npm run dev   # set APP_ORIGIN=http://localhost:5173 for the API
+cp .env.example .env            # add OPENAI_API_KEY (without it the app runs in no-key mode)
+docker compose up --build       # Postgres + app, migrated and seeded -> http://localhost:8000
 ```
-Deploying to AWS: [`docs/deployment.md`](../docs/deployment.md).
+Full setup, every login and the step-by-step journeys: [`AGENTS.md`](../AGENTS.md). Deploying to AWS: [`docs/deployment.md`](../docs/deployment.md).

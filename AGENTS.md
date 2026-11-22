@@ -79,7 +79,7 @@ default or a labelled fallback.
 | `OPENAI_API_KEY` | **Required for AI** (agent, voice, document reading, contract review) | **No-key mode**: the app boots, and logins, dashboards, records, charts and uploads all work. Agent turns reply "AI is off on this server", and voice returns 503 |
 | `OPENAI_MODEL_FAST` / `OPENAI_MODEL_STRONG` | Optional | Agent model: `STRONG` if set, else `FAST` (`gpt-5.4-mini` default) |
 | `OPENAI_MODEL_VOICE`, `OPENAI_VOICE_NAME`, `OPENAI_VOICE_SPEED` | Optional | `gpt-live-1.1`, `marin`, `1.15` |
-| `PURSER_WORKFLOWS`, `OPENAI_MODEL_WORKFLOW`, `OPENAI_MODEL_ESCALATION` | Optional | `0` = single agent. `1` = checklist workflow engine (cheaper; needed to *run* saved routines) |
+| `PURSER_WORKFLOWS`, `OPENAI_MODEL_WORKFLOW`, `OPENAI_MODEL_ESCALATION` | Optional | `1` = checklist workflow engine on `gpt-6-luna`, escalating to `gpt-6-sol` (live site and docker compose default; needed to *run* saved routines). `0` = single agent (app default for the native path unless `.env` sets 1) |
 | `DATABASE_URL`, `TEST_DATABASE_URL` | Set by compose | Local compose Postgres on :5433 |
 | `SESSION_SECRET` | Optional locally | Dev value. Set a random string in any shared deployment |
 | `APP_ORIGIN` | Optional | `http://localhost:8000`. Cookies are `Secure` only when it starts with `https://` |

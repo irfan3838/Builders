@@ -6,6 +6,7 @@ A voice-first back office for Indian small businesses: expenses, bills, budgets,
 
 | Submission requirement | Where |
 |---|---|
+| Setup, logins, journeys (reviewers start here) | [`AGENTS.md`](AGENTS.md) · video: [`VIDEO.md`](VIDEO.md) |
 | 1. Working demo, end to end on fresh input | Live on AWS: **https://d342yicbppf96p.cloudfront.net** · script: [`submission/DEMO.md`](submission/DEMO.md) |
 | 2. Source code | This repository (FastAPI `app/`, React `web/`, Terraform `infra/terraform/`, tests `tests/`) |
 | 3. Evidence of results | [`submission/EVIDENCE.md`](submission/EVIDENCE.md): baseline comparison (100% vs 89% task success, 8.7x cheaper), outputs on new data, proof that data persists |
@@ -14,12 +15,9 @@ A voice-first back office for Indian small businesses: expenses, bills, budgets,
 | Production readiness | [`submission/PRODUCTION.md`](submission/PRODUCTION.md) |
 
 ## Run it locally
+**Setup, logins and end-to-end journeys: [`AGENTS.md`](AGENTS.md).** Short version:
 ```bash
-cp .env.example .env            # add OPENAI_API_KEY (other integrations are optional)
-docker compose up -d            # Postgres 16 on :5433
-uv sync && uv run alembic upgrade head
-uv run python -m seed.seed_v1 --reset --demo && uv run python -m seed.role_users
-uv run uvicorn app.main:app --reload
-cd web && npm install && npm run dev
+cp .env.example .env            # add OPENAI_API_KEY (without it the app runs in no-key mode)
+docker compose up --build       # Postgres + app, migrated and seeded -> http://localhost:8000
 ```
-Deploying to AWS: [`docs/deployment.md`](docs/deployment.md). All company data in this repository is synthetic.
+Demo video: [`VIDEO.md`](VIDEO.md). Deploying to AWS: [`docs/deployment.md`](docs/deployment.md). All company data in this repository is synthetic.

@@ -1,6 +1,6 @@
 
 **Live URL:** https://d342yicbppf96p.cloudfront.net (AWS us-west-2, CloudFront → ALB → ECS Fargate → RDS)
-**Logins:** admin (full access, linked real Gmail/Calendar), CEO (read-only) and employee. Credentials are provided in the submission form, not in the repo.
+**Logins:** admin (full access, linked real Gmail/Calendar), CEO (read-only) and employee. Credentials are in [`AGENTS.md`](../AGENTS.md) §1.
 **Target length:** about 6 minutes (a 4-minute cut is at the bottom). Chrome is recommended; allow the microphone. Say **"Purser"** or tap the orb to talk. Typing in the composer runs the same agent.
 
 > Everything below runs live: real OpenAI voice and agent calls, real database writes, live fares. The company data is synthetic (see `HONEST_NOTE.md`).
