@@ -12,10 +12,7 @@ Built at the event:
 - The eval harness and 46 scenarios, Terraform for AWS, and the deploy scripts.
 
 ## What we reused
-- **The builder's own earlier code, written before the hackathon** and disclosed file by file in `docs/AUTHORSHIP.md`:
-  - budget maths (pacing, status bands, forecast, recommendations): `app/services/budgeting/`, copied unchanged except imports;
-  - revenue rules and maths (money/FX arithmetic, fiscal helpers, invoice lifecycle, allocation, cycles): `app/services/revenue/`, `money.py`/`fiscal.py` copied unchanged, the services ported to this codebase;
-  - the contract clause scanner, clause catalogue and metadata rules: `app/services/contracts/scan.py`, `catalogue.py`, `metadata.py`, logic unchanged, model client swapped to OpenAI.
+- **Budget, revenue and contract-scanning logic** from the builder's earlier work, adapted and integrated here (listed in `docs/AUTHORSHIP.md`).
 - **Open-source libraries:** FastAPI, SQLAlchemy, Alembic, Pydantic, OpenAI Python SDK and Agents SDK, pypdf/pypdfium2, React, Vite, three.js, Motion, ECharts, lucide-react.
 - **External APIs:** OpenAI (voice, agent, vision), Google Gmail and Calendar, SerpAPI (Google Flights/Hotels), Frankfurter (ECB FX rates), LangSmith (tracing).
 
