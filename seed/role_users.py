@@ -185,8 +185,8 @@ async def clean_labels(s) -> int:
     return n
 
 
-async def main() -> dict:
-    sm = db.configure(None)
+async def main(url: str | None = None) -> dict:
+    sm = db.configure(url)
     async with sm() as s, s.begin():
         return await seed_roles(s)
 

@@ -25,7 +25,7 @@ async def bootstrap(url: str | None = None) -> dict:
     from seed.seed_v1 import reset_and_seed
 
     ids = await reset_and_seed(url, demo=True)
-    roles = await role_users.main()
+    roles = await role_users.main(url)
     return {"seeded": True, "workspace": ids.get("workspace_id"), "roles": roles.get("users")}
 
 
