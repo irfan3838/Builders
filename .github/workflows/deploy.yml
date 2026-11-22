@@ -1,0 +1,115 @@
+name: Deploy
+
+# Every push to main builds the image, runs DB migrations with it, rolls the ECS service and smoke-tests /health.
+# AWS auth: GitHub OIDC -> role in infra/terraform/cicd.tf (repo variable AWS_DEPLOY_ROLE_ARN). No stored keys.
+# Rollback: re-run this workflow on an older commit is NOT possible (role trusts main only); use
+#   terraform -chdir=infra/terraform apply -var image_tag=<previous sha>   (see docs/deployment.md)
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "graphify-out/**"
+      - "docs/**"
+      - "submission/**"
+      - "**/*.md"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-west-2
+  CLUSTER: munshi
+  SERVICE: munshi
+  CONTAINER: app
+  LOG_GROUP: /ecs/munshi
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: ECR login
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        id: image
+        run: |
+          set -euo pipefail
+          TAG=$(git rev-parse --short HEAD)
+          IMAGE="${{ steps.ecr.outputs.registry }}/munshi:$TAG"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Register task definition with the new image
+        id: taskdef
+        run: |
+          set -euo pipefail
+          CURRENT=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+            --query 'services[0].taskDefinition' --output text)
+          aws ecs describe-task-definition --task-definition "$CURRENT" --query taskDefinition > current.json
+          jq --arg img "${{ steps.image.outputs.image }}" --arg c "$CONTAINER" '
+            .containerDefinitions |= map(if .name == $c then .image = $img else . end)
+            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities,
+                  .registeredAt, .registeredBy, .deregisteredAt)' current.json > new.json
+          NEW=$(aws ecs register-task-definition --cli-input-json file://new.json \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "previous=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "arn=$NEW" >> "$GITHUB_OUTPUT"
+          echo "Registered $NEW (was $CURRENT)"
+
+      - name: Run migrations (alembic upgrade head) with the new image
+        run: |
+          set -euo pipefail
+          NET=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+            --query 'services[0].networkConfiguration' --output json)
+          OVERRIDES=$(jq -nc --arg c "$CONTAINER" '{containerOverrides:[{name:$c,command:["sh","-c","alembic upgrade head"]}]}')
+          TASK=$(aws ecs run-task --cluster "$CLUSTER" --task-definition "${{ steps.taskdef.outputs.arn }}" \
+            --launch-type FARGATE --network-configuration "$NET" --overrides "$OVERRIDES" \
+            --query 'tasks[0].taskArn' --output text)
+          echo "migration task: $TASK"
+          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK"
+          CODE=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK" --query 'tasks[0].containers[0].exitCode' --output text)
+          aws logs get-log-events --log-group-name "$LOG_GROUP" --log-stream-name "app/$CONTAINER/${TASK##*/}" \
+            --limit 20 --query 'events[].message' --output text 2>/dev/null | tr '\t' '\n' || true
+          echo "exit code: $CODE"
+          [ "$CODE" = "0" ]
+
+      - name: Roll the service
+        run: |
+          set -euo pipefail
+          aws ecs update-service --cluster "$CLUSTER" --service "$SERVICE" \
+            --task-definition "${{ steps.taskdef.outputs.arn }}" --query 'service.deployments[0].id' --output text
+          aws ecs wait services-stable --cluster "$CLUSTER" --services "$SERVICE"
+          RUNNING=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --query 'services[0].taskDefinition' --output text)
+          echo "service now runs $RUNNING"
+          if [ "$RUNNING" != "${{ steps.taskdef.outputs.arn }}" ]; then
+            echo "::error::Deployment circuit breaker rolled back to $RUNNING"; exit 1
+          fi
+
+      - name: Smoke test /health
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 10); do
+            if curl -fsS --max-time 10 "$APP_URL/health"; then echo; echo "healthy"; exit 0; fi
+            sleep 6
+          done
+          echo "::error::$APP_URL/health did not return 200"; exit 1

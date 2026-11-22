@@ -49,7 +49,20 @@ aws ecs update-service --region us-west-2 --cluster munshi --service munshi --fo
 curl -s "$(terraform -chdir=infra/terraform output -raw url)/health"     # {"ok":true}
 ```
 
-## Redeploy (new code)
+## Continuous deployment (GitHub Actions, from main)
+
+Every push to `main` (except docs/graphify-only changes) runs `.github/workflows/deploy.yml`: build image tagged with the
+short commit -> push to ECR -> register a new task-definition revision (current one with only the image swapped) ->
+`alembic upgrade head` as a one-off task with the new image -> roll the service -> wait stable -> `GET $APP_URL/health`.
+Manual run: Actions > Deploy > Run workflow (main only).
+
+- Auth: GitHub OIDC -> `munshi-github-deploy` role (`infra/terraform/cicd.tf`), trusted only for `refs/heads/main` of
+  this repo. Repo variables: `AWS_DEPLOY_ROLE_ARN`, `APP_URL`. No AWS keys stored in GitHub.
+- Drift: CD changes the service's task definition outside Terraform. Before a local `terraform apply`, pass the running
+  tag (`-var image_tag=<short sha of main>`) or Terraform will roll the service back to its own image tag.
+- Env/secret changes (tfvars `app_env`) still go through `terraform apply`; CD copies whatever the current revision has.
+
+## Redeploy (new code, manual)
 
 ```bash
 TAG=$(git rev-parse --short HEAD); docker build -t "$REPO:$TAG" . && docker push "$REPO:$TAG"

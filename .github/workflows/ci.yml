@@ -49,7 +49,8 @@ jobs:
       - name: Check for large files (>5 MB)
         run: |
           set -euo pipefail
-          large=$(git ls-files -z | xargs -0 -r du -k 2>/dev/null | awk '$1 > 5120 {print $2}')
+          # graphify-out/ is a generated knowledge graph (not app code), exempt from the size limit
+          large=$(git ls-files -z -- . ':!graphify-out/**' | xargs -0 -r du -k 2>/dev/null | awk '$1 > 5120 {print $2}')
           if [ -n "$large" ]; then
             echo "::error::Files over 5 MB are tracked (use S3 or Git LFS):"
             echo "$large"
