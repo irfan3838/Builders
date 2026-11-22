@@ -134,9 +134,9 @@ journey, and the refusals. The wording of replies varies from run to run. The nu
 ### Admin (`irfmed38@gmail.com`, or `priya@purser.demo` locally)
 1. **Briefing:** *"Purser, aaj kya pending hai?"* You get a spoken or written briefing: pending approvals, bills due,
    overdue invoices, budget alerts and contract deadlines, with the same items as cards.
-2. **Budget question:** *"Travel ka poore saal ka budget dikhao"*. You get "FY2026-27 allocated Rs 50,000, Rs 45,000
-   available" and a budget card. *"Travel mein kitna bacha hai?"* answers for **this month** (about Rs 10,000). The
-   numbers come from SQL, never from the model.
+2. **Budget question:** *"Travel ka poore saal ka budget dikhao"*. You get FY2026-27 Travel allocated Rs 50,000, with
+   Rs 5,000 reserved for Arjun's Pune trip, so Rs 45,000 is available. The reply may quote either figure. You also get
+   a budget card. *"Travel mein kitna bacha hai?"* answers for **this month** (about Rs 10,000). Numbers come from SQL.
 3. **Receipt to approved claim (core journey).** Verified on a fresh `docker compose` seed; replies are in Hinglish:
    1. Drop `evals/dev/dev_hotel_receipt_synthetic.png` on the page. You get "Hotel Shivneri Residency, Pune ka Rs 4,800
       ka hotel receipt... Payment kisne ki?" Vendor, amount, date and GST are read, and the arithmetic is checked in code.
