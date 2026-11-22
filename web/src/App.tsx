@@ -1,4 +1,5 @@
 // Purser web app: sign-in gate, then the workspace shell.
+import ErrorBoundary from "./components/shared/ErrorBoundary";
 import { MotionConfig, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { api, ApiError, Me, setSession } from "./api";
@@ -49,7 +50,16 @@ export default function App() {
         {me ? (
           <PurserProvider me={me}>
             <PurserVoiceController>
-              <AppShell />
+              <ErrorBoundary label="workspace" fallback={(e) => (
+                <main className="login"><div className="glass" role="alert" style={{ padding: 28, maxWidth: 440 }}>
+                  <p className="wordmark">purser</p>
+                  <p>Something on this screen failed to draw. Your data is safe; nothing was changed.</p>
+                  <p className="fine">{e.message}</p>
+                  <button className="btn btn-primary" onClick={() => location.reload()}>Reload</button>
+                </div></main>
+              )}>
+                <AppShell />
+              </ErrorBoundary>
             </PurserVoiceController>
           </PurserProvider>
         ) : <Login onDone={setMe} />}

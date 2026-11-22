@@ -10,10 +10,10 @@ export default function PurserDeskHelper({ pose }: { pose: HelperPose }) {
   const [blink, setBlink] = useState(false);
   useEffect(() => {
     if (reduced) return;
-    let t: number;
-    const loop = () => { t = window.setTimeout(() => { setBlink(true); window.setTimeout(() => setBlink(false), 140); loop(); }, 3800 + Math.random() * 4200); };
+    let t: number, open: number;
+    const loop = () => { t = window.setTimeout(() => { setBlink(true); open = window.setTimeout(() => setBlink(false), 140); loop(); }, 3800 + Math.random() * 4200); };
     loop();
-    return () => clearTimeout(t);
+    return () => { clearTimeout(t); clearTimeout(open); };
   }, [reduced]);
 
   const head = {

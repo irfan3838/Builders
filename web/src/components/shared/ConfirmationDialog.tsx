@@ -1,6 +1,7 @@
 // Modal confirmation for consequential actions. Focus is trapped; Escape cancels; Confirm is single-flight.
 import { AnimatePresence, motion } from "motion/react";
 import { ReactNode, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { ease } from "../../animations/tokens";
 
 type Props = {
@@ -27,7 +28,8 @@ export default function ConfirmationDialog({ open, title, lines, confirmLabel, b
     addEventListener("keydown", key);
     return () => { clearTimeout(t); removeEventListener("keydown", key); prev?.focus?.(); };
   }, [open, busy, onCancel]);
-  return (
+  // Portaled to <body>: a fixed overlay inside a container-query, blurred or transformed ancestor would be clipped to it.
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div className="scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
@@ -49,6 +51,7 @@ export default function ConfirmationDialog({ open, title, lines, confirmLabel, b
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

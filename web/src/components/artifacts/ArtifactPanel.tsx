@@ -1,11 +1,13 @@
 // Desk panel: the tall glass inspector. Shows only what Purser or the user opened (agent-composed cards),
 // plus in-flight uploads. Decision controls for the focused claim render into the footer slot.
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { FileText, PanelRightOpen, X } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cardKey, CardView } from "../../cards";
 import { dur, ease, reveal } from "../../animations/tokens";
 import { UploadItem, usePurser } from "../../state/store";
+import { useAssistant } from "../assistant/PurserVoiceController";
+import ErrorBoundary from "../shared/ErrorBoundary";
 import ClaimReview from "./ClaimReview";
 
 function UploadCard({ u }: { u: UploadItem }) {
@@ -32,11 +34,21 @@ function UploadCard({ u }: { u: UploadItem }) {
 
 export default function ArtifactPanel() {
   const P = usePurser();
-  const hasClaim = P.cards.some((c) => c.card === "claim_review");
-  const visible = P.cards
-    .filter((c) => !(c.card === "proposal" && hasClaim && c.proposal_id === P.decision?.proposalId))
-    .sort((a, b) => Number(b.card === "claim_review") - Number(a.card === "claim_review"));  // the claim under review leads
+  const { sending } = useAssistant();
+  const reduced = useReducedMotion();
+  // Newest first, exactly as the store orders it: whatever Purser showed last is on top.
+  // A claim review is "in focus" (owns the footer and the decision strip) only while it is the newest item.
+  const focusClaim = P.claimFocus && P.cards.some((c) => c.card === "claim_review");
+  const visible = P.cards.filter((c) => !(c.card === "proposal" && focusClaim && c.proposal_id === P.decision?.proposalId));
   const empty = !visible.length && !P.uploads.length;
+  const body = useRef<HTMLDivElement>(null);
+  const [foot, setFoot] = useState<HTMLDivElement | null>(null);
+  const userText = P.caption?.who === "user" ? P.caption.text : null;
+
+  // a new batch landed: bring the top of the Desk (the newest item) into view
+  useEffect(() => {
+    if (P.lastBatch && P.panelOpen) body.current?.scrollTo({ top: 0, behavior: reduced ? "auto" : "smooth" });
+  }, [P.lastBatch, P.panelOpen, reduced]);
 
   useEffect(() => {
     if (!P.panelOpen) return;
@@ -47,7 +59,7 @@ export default function ArtifactPanel() {
 
   return (
     <>
-      <AnimatePresence initial={false}>
+      <AnimatePresence initial={false} mode="wait">
         {P.panelOpen && (
           <motion.aside id="artifact-panel" key="panel" className="panel glass" aria-label="Desk"
             initial={{ opacity: 0, x: 60 }} animate={{ opacity: 1, x: 0 }}
@@ -58,22 +70,43 @@ export default function ArtifactPanel() {
                 <X size={22} />
               </motion.button>
             </div>
-            <div className="panel-body">
-              {empty && <p className="panel-empty">Nothing open yet. Ask Purser about a claim, a budget or a bill, or hand it a receipt, and the evidence appears here.</p>}
+            <div className="panel-body" ref={body} data-working={sending || undefined}>
+              <AnimatePresence initial={false}>
+                {sending && (
+                  <motion.div key="working" className="desk-working" role="status" aria-live="polite"
+                    initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }}>
+                    <span className="dot" aria-hidden="true" />
+                    <span><strong>Purser is working…</strong>{userText ? <span className="desk-working-q"> “{userText.slice(0, 90)}”</span> : null}</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              {empty && !sending && <p className="panel-empty">Nothing open yet. Ask Purser about a claim, a budget or a bill, or hand it a receipt, and the evidence appears here.</p>}
               <AnimatePresence mode="popLayout" initial={false}>
                 {P.uploads.map((u) => (
                   <motion.div key={u.key} layout variants={reveal} initial="hidden" animate="show" exit="exit"><UploadCard u={u} /></motion.div>
                 ))}
-                {visible.map((c, i) => (
-                  <motion.div key={cardKey(c)} layout variants={reveal} initial="hidden" animate="show" exit="exit" custom={i}>
-                    {c.card === "claim_review"
-                      ? <ClaimReview card={c as any} bump={P.bump} primary />
-                      : <CardView card={c} bump={P.bump} onChanged={P.refresh} onOpen={(n) => P.addCards([n])} />}
-                  </motion.div>
-                ))}
+                {visible.map((c, i) => {
+                  const k = cardKey(c);
+                  return (
+                    <motion.div key={k} layout variants={reveal} initial="hidden" animate="show" exit="exit" custom={i}
+                      className={`desk-item${P.newKeys.has(k) ? " card-new" : ""}`} data-batch={P.newKeys.has(k) ? P.lastBatch : undefined}>
+                      <ErrorBoundary label={`card ${c.card}`} resetKey={c} fallback={() => (
+                        <div className="card" role="alert">
+                          <div className="card-head"><span className="kind">{c.card.replace(/_/g, " ")}</span>
+                            <button className="link" onClick={() => P.removeCard(k)}>Dismiss</button></div>
+                          <p className="hint">This item could not be shown. The rest of the Desk is unaffected.</p>
+                        </div>
+                      )}>
+                        {c.card === "claim_review"
+                          ? <ClaimReview card={c as any} bump={P.bump} primary={focusClaim} slot={foot} />
+                          : <CardView card={c} bump={P.bump} onChanged={P.refresh} onOpen={(n) => P.addCards([n])} />}
+                      </ErrorBoundary>
+                    </motion.div>
+                  );
+                })}
               </AnimatePresence>
             </div>
-            <div className="panel-foot" id="panel-foot-slot" style={hasClaim ? undefined : { display: "none" }} />
+            <div className="panel-foot" ref={setFoot} style={focusClaim ? undefined : { display: "none" }} />
           </motion.aside>
         )}
       </AnimatePresence>

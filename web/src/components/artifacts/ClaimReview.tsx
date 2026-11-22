@@ -47,7 +47,11 @@ function Lightbox({ doc, onClose }: { doc: { id: number; filename: string; pages
     </motion.div>, document.body);
 }
 
-export default function ClaimReview({ card, bump, primary }: { card: { document_id?: number; ref?: string; reservation_id?: number }; bump: number; primary: boolean }) {
+export default function ClaimReview({ card, bump, primary, slot }: {
+  card: { document_id?: number; ref?: string; reservation_id?: number }; bump: number; primary: boolean;
+  /** The Desk footer this claim's decision controls render into (owned by ArtifactPanel; null while it is not mounted). */
+  slot: HTMLElement | null;
+}) {
   const P = usePurser();
   const { fly } = useFx();
   const reduced = useReducedMotion();
@@ -65,7 +69,6 @@ export default function ClaimReview({ card, bump, primary }: { card: { document_
   const [dlgErr, setDlgErr] = useState<string | null>(null);
   const [result, setResult] = useState<"success" | null>(null);
   const [full, setFull] = useState(false);
-  const [slot, setSlot] = useState<HTMLElement | null>(null);
   const approveBtn = useRef<HTMLButtonElement>(null);
   const prevAvail = useRef<number | null>(null);
 
@@ -76,7 +79,6 @@ export default function ClaimReview({ card, bump, primary }: { card: { document_
   }, [path, bump, n]);
   const reload = useCallback(() => setN((x) => x + 1), []);
 
-  useEffect(() => { setSlot(document.getElementById("panel-foot-slot")); }, [primary]);
 
   // helper choreography follows the reveal: look at receipt -> raise clip as matching starts -> lean -> nod/worry
   useEffect(() => {
@@ -259,7 +261,7 @@ export default function ClaimReview({ card, bump, primary }: { card: { document_
       )}
 
       {/* decision controls live in the panel footer (screenshot layout) */}
-      {primary && slot && createPortal(
+      {primary && slot?.isConnected && createPortal(
         <>
           <div className="approve-wrap">
             <motion.button ref={approveBtn} className="btn btn-ok" style={{ width: "100%" }} disabled={!canAct || busy || approved}

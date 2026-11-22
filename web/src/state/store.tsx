@@ -31,6 +31,10 @@ type Ctx = {
   view: View; go: (v: View) => void;
   cards: Card[]; addCards: (c: Card[]) => void; removeCard: (key: string) => void; clearCards: () => void;
   panelOpen: boolean; setPanelOpen: (v: boolean) => void;
+  /** Bumped whenever a batch of Desk cards lands; `newKeys` are the cards in that batch (newest on top). */
+  lastBatch: number; newKeys: Set<string>;
+  /** True while the newest action is the claim under review (it owns the Desk footer and the decision strip). */
+  claimFocus: boolean;
   bump: number; refresh: () => void;
   baseOrb: OrbState; setBaseOrb: (s: OrbState) => void; orb: OrbState; flashOrb: (s: "success" | "error" | "cancelled") => void;
   caption: Caption; say: (who: Who, text: string, append?: boolean) => void;
@@ -59,7 +63,13 @@ const viewFromHash = (): View => {
 export function PurserProvider({ me, children }: { me: Me; children: ReactNode }) {
   const [view, setView] = useState<View>(viewFromHash);
   const [cards, setCards] = useState<Card[]>([]);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelOpen, setPanelOpenState] = useState(false);
+  const [lastBatch, setLastBatch] = useState(0);
+  const [newKeys, setNewKeys] = useState<Set<string>>(() => new Set());
+  const [claimFocus, setClaimFocus] = useState(false);
+  const closedAt = useRef(0);
+  // The user closing the Desk is respected for a short while: a card landing right after must not yank it back open.
+  const setPanelOpen = useCallback((v: boolean) => { if (!v) closedAt.current = Date.now(); setPanelOpenState(v); }, []);
   const [bump, setBump] = useState(0);
   const [baseOrb, setBaseOrb] = useState<OrbState>("idle");
   const [flash, setFlash] = useState<OrbState | null>(null);
@@ -99,14 +109,19 @@ export function PurserProvider({ me, children }: { me: Me; children: ReactNode }
     // within one batch the later card for the same object wins; then newest first, older copies dropped
     const byKey = new Map<string, Card>();
     for (const c of incoming) { byKey.delete(cardKey(c)); byKey.set(cardKey(c), c); }
-    const batch = [...byKey.values()].reverse();
+    // a claim review leads its own batch (its proposal is folded into it); otherwise newest first
+    const batch = [...byKey.values()].reverse().sort((a, b) => Number(b.card === "claim_review") - Number(a.card === "claim_review"));
+    if (incoming.some((c) => c.card === "claim_review")) setClaimFocus(true);
+    else if (incoming.some((c) => !CLAIM_FOLLOW_UPS.has(c.card))) setClaimFocus(false);  // Purser moved on to another action
     setCards((prev) => [...batch, ...prev.filter((c) => !byKey.has(cardKey(c)))].slice(0, 12));
     setBump((b) => b + 1);
-    // Only things the user must look at or act on open the panel; other cards wait behind the tab badge.
-    if (incoming.some((c) => PANEL_OPENERS.has(c.card))) setPanelOpen(true);
+    setNewKeys(new Set(byKey.keys()));
+    setLastBatch((n) => n + 1);
+    // Whatever Purser just showed is the current action: bring the Desk forward unless the user just closed it.
+    if (Date.now() - closedAt.current > USER_CLOSE_GRACE_MS) setPanelOpenState(true);
   }, []);
   const removeCard = useCallback((key: string) => setCards((p) => p.filter((c) => cardKey(c) !== key)), []);
-  const clearCards = useCallback(() => setCards([]), []);
+  const clearCards = useCallback(() => { setCards([]); setClaimFocus(false); }, []);
   const refresh = useCallback(() => setBump((b) => b + 1), []);
 
   const flashOrb = useCallback((s: "success" | "error" | "cancelled") => {
@@ -134,18 +149,20 @@ export function PurserProvider({ me, children }: { me: Me; children: ReactNode }
   useEffect(() => { const t = window.setInterval(reloadPriorities, 45_000); return () => clearInterval(t); }, [reloadPriorities]);
 
   const value = useMemo<Ctx>(() => ({
-    me, view, go, cards, addCards, removeCard, clearCards, panelOpen, setPanelOpen, bump, refresh,
+    me, view, go, cards, addCards, removeCard, clearCards, panelOpen, setPanelOpen, lastBatch, newKeys, claimFocus, bump, refresh,
     baseOrb, setBaseOrb, orb: flash ?? baseOrb, flashOrb, caption, say, toasts, toast, dismissToast,
     priorities, reloadPriorities, decision, setDecision, uploads, setUploads, suggestions, setSuggestions, choice, setChoice, busy, online,
-  }), [me, view, go, cards, addCards, removeCard, clearCards, panelOpen, bump, refresh, baseOrb, flash, flashOrb, caption, say, toasts, toast,
+  }), [me, view, go, cards, addCards, removeCard, clearCards, panelOpen, setPanelOpen, lastBatch, newKeys, claimFocus, bump, refresh, baseOrb, flash, flashOrb, caption, say, toasts, toast,
     dismissToast, priorities, reloadPriorities, decision, uploads, suggestions, choice, online]);
 
   return <PurserContext.Provider value={value}>{children}</PurserContext.Provider>;
 }
 
+const USER_CLOSE_GRACE_MS = 6_000;
+/** Cards that follow up on the claim in focus (its receipt, history, source) and so do not take focus away from it. */
+const CLAIM_FOLLOW_UPS = new Set(["receipt", "audit_trail", "source"]);
+
 /** Load a server object by path; reloads when `bump` changes. */
-const PANEL_OPENERS = new Set(["chart", "view", "flight_options", "hotel_options", "payment", "proposal", "claim_review", "receipt", "source", "mail_thread",
-  "contract_review"]);
 
 export function useLoad<T>(path: string | null, bump = 0) {
   const [data, setData] = useState<T | null>(null);
