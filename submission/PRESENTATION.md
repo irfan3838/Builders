@@ -164,7 +164,7 @@ mindmap
 | 📈 **Charts & views** | Bar, line, pie, treemap, heatmap, calendar, sankey; period comparison | *"Sirf Marketing aur Travel dikhao"* |
 | 🔁 **User routines** | Save your own multi-step workflow by chat or in Settings | *"Har Monday ka routine banao: pending bills + overdue invoices"* |
 
-**The scale built in one weekend:** ~19,900 lines of Python, ~4,600 lines of TypeScript, **102 typed agent tools**, **67 workflows**, 7 role-aware modules, and ~990 test functions (~1,350 collected cases).
+**The scale built in one weekend:** ~19,900 lines of Python, ~4,600 lines of TypeScript, **102 typed agent tools**, **67 workflows**, 7 role-aware modules, and ~1,030 test functions.
 
 ---
 
@@ -222,7 +222,7 @@ sequenceDiagram
 
 ### 📜 Spotlight 2: the contract liability radar
 
-**Today:** a 15-page MSA sits in a shared drive. Nobody knows that **the company** carries unlimited liability for data loss, or that the auto-renewal notice window closes on 1 December.
+**Today:** a 15-page MSA sits in a shared drive. Nobody knows that **the company** carries unlimited liability for data loss, or that the auto-renewal notice window closes on 15 December.
 
 **With Purser:** drop the contract (PDF, DOCX or **scanned** PDF) and ask *"kaunse liabilities humpe hain?"*
 
@@ -353,7 +353,7 @@ flowchart LR
 
 ### Novelty 3: checklist workflows (our engineering-depth bet)
 
-A single agent with 99 tools re-sends ~36,000 tokens on **every** call and skips steps in long chains. We replaced it:
+A single agent with 99 tools sends ~36,000 input tokens **per turn** (tool schemas plus the whole history, replayed on each model call) and skips steps in long chains. We replaced it:
 
 ```mermaid
 flowchart TD
@@ -401,21 +401,23 @@ xychart-beta
 
 ```mermaid
 xychart-beta
-    title "Input tokens sent to the model per turn"
-    x-axis ["A0 · today", "A1 · cheap model", "B · workflows (shipped)"]
+    title "Input tokens sent to the model per turn (same 45 scenarios, run 3)"
+    x-axis ["A0 · today", "A1 · cheap model", "B · checklist workflows"]
     y-axis "Tokens per turn" 0 --> 42000
-    bar [36195, 39709, 5993]
+    bar [36195, 39709, 6875]
 ```
+*Shipped build: 5,993 tokens per turn.*
 
 ### Cost per successful task
 
 ```mermaid
 xychart-beta
-    title "US$ per successful task (lower is better)"
-    x-axis ["A0 · today", "A1 · cheap model", "B · workflows (shipped)"]
+    title "US$ per successful task, text path (same 45 scenarios, run 3)"
+    x-axis ["A0 · today", "A1 · cheap model", "B · checklist workflows"]
     y-axis "USD" 0 --> 0.011
-    bar [0.0104, 0.0025, 0.0012]
+    bar [0.0104, 0.0025, 0.0017]
 ```
+*On the **same model**, workflows cost **1.5x less** than a single agent (A1 vs B). Most of the gap to A0 comes from switching to a cheaper model. Shipped build: $0.0012. Costs cover the text agent only; real-time voice audio is billed separately by OpenAI.*
 
 ### Context stays flat in a long conversation
 
@@ -425,30 +427,32 @@ xychart-beta
     x-axis ["T1", "T2", "T3", "T4 haan", "T5"]
     y-axis "Input tokens (k)" 0 --> 60
     line [50.0, 51.8, 53.7, 55.1, 18.6]
-    line [5.3, 6.2, 9.4, 0, 7.2]
+    line [5.2, 8.4, 9.2, 0, 7.1]
 ```
-*Top line: today's single agent (A0). Bottom line: workflows (B). T4 is a "haan", handled in code with 0 tokens.*
+*Top line: today's single agent (A0). Bottom line: workflows (B). Both from run 3. T4 is a "haan", handled in code with 0 tokens.*
 
 ### The scoreboard
 
-| | A0 · today | A1 · cheap model | 🏆 **B · workflows** |
-|---|---|---|---|
-| ✅ Task success (same code) | 89% | 93% | **98%** (shipped code: **100%**) |
-| 🚫 Wrong writes | 0 | 0 | **0** |
-| 🔤 Input tokens / turn | 36,195 | 39,709 | **5,993** (**6x fewer**) |
-| 💵 $ / successful task | $0.0104 | $0.0025 | **$0.0012** (**8.7x cheaper**) |
-| ⚡ Turns with **no** LLM call | 0% | 0% | **20%** |
-| 👍 Confirming "haan" | ~33,600 tokens · 7.9 s | same | **0 tokens · 118 ms** |
-| ⏱️ Latency p50 / p95 | 7.7 / 14.4 s | 9.5 / 15.1 s | 8.0 / 15.5 s |
+| | A0 · today | A1 · cheap model | 🏆 **B · workflows** | B · shipped build |
+|---|---|---|---|---|
+| ✅ Task success | 40/45 (89%) | 42/45 (93%) | **44/45 (98%)** | 46/46 (100%) |
+| 🚫 Wrong writes | 0 | 0 | **0** | 0 |
+| 🔤 Input tokens / turn | 36,195 | 39,709 | **6,875** (**5–6x fewer**) | 5,993 |
+| 💵 $ / successful task (text) | $0.0104 | $0.0025 | **$0.0017** (**1.5x less than A1**) | $0.0012 |
+| ⚡ Turns with **no** LLM call | 0% | 0% | **20%** | 20% |
+| 👍 Confirming "haan" | ~33,600 tokens · 7.9 s | same | **0 tokens · 118 ms** | same |
+| ⏱️ Latency p50 / p95 | 7.7 / 14.4 s | 9.5 / 15.1 s | 8.7 / 19.8 s | 8.0 / 15.5 s |
+
+*The first three columns are one run (run 3) on the same code and scenarios. The shipped column is a later run of B on the final build, with one extra safety scenario. Single run per arm: a 2-task gap (44 vs 42) is a signal, not proof. B is slower at p95 because of retries and escalations.*
 
 ### Where the gains came from (by tier)
 
-| Tier | A0 | A1 | **B** | Why workflows win |
-|---|---|---|---|---|
-| 1 · Single action | 17/17 | 17/17 | **17/17** | Same accuracy, **9.5x cheaper** |
-| 2 · Chained (2–5 turns) | 9/12 | 11/12 | **12/12** | Single agents forget reminders and drop chart refinements |
-| 3 · Edge (ambiguity, corrections, documents) | 8/10 | 8/10 | **10/10** | Checklist forces "find → ask if ambiguous → propose → confirm" |
-| 4 · Safety (injection, wrong role, "yes" with nothing pending) | 6/6 | 6/6 | **7/7** | Structural: the model has no confirm tool at all |
+| Tier | A0 | A1 | **B** (run 3) | B (shipped) | What we saw |
+|---|---|---|---|---|---|
+| 1 · Single action | 17/17 | 17/17 | 16/17 | 17/17 | Every arm handles simple tasks; the win here is cost |
+| 2 · Chained (2–5 turns) | 9/12 | 11/12 | **12/12** | 12/12 | Single agents forget reminders and drop chart refinements |
+| 3 · Edge (ambiguity, corrections, documents) | 8/10 | 8/10 | **10/10** | 10/10 | Checklist forces "find → ask if ambiguous → propose → confirm" |
+| 4 · Safety (injection, wrong role, "yes" with nothing pending) | 6/6 | 6/6 | **6/6** | 7/7 | Structural: the model has no confirm tool at all. The 7th case (employees can't see budgets) was added after run 3 |
 
 ### We let the eval drive the engineering
 
@@ -494,15 +498,36 @@ quadrantChart
 |---|---|---|---|---|---|---|
 | Finance + HR + revenue + contracts in one place | Finance only (HR is a separate product) | Accounting | HR only | Expenses | ✗ (no ledger) | ✅ |
 | Voice is the main interface | ✗ | ✗ | ✗ | ✗ | ✅ | ✅ |
-| Hindi / Hinglish conversation | ✗ | ✗ | ✗ | ✗ | Partial | ✅ |
-| AI takes multi-step actions | Assistant features | ✗ | ✗ | Receipt scanning | Talks, can't post to your books | ✅ 102 tools |
+| Spoken Hindi / Hinglish to run tasks | Not the core experience | Not the core experience | Not the core experience | Not the core experience | Partial | ✅ |
+| GST filing, payroll, bank reconciliation | ✅ | ✅ | Payroll ✅ | ✗ | ✗ | ✗ (not our job: sync to Tally / Zoho, see below) |
+| AI takes multi-step actions | AI assistant features | Limited | Limited | Receipt scanning | Talks, can't post to your books | ✅ 102 tools |
 | Server-verified confirmation before any write | n/a | n/a | n/a | n/a | ✗ | ✅ |
 | Every spoken number comes from SQL | n/a | n/a | n/a | n/a | ✗ | ✅ |
 | Charts built on demand by voice | Fixed reports | Fixed reports | Fixed reports | Fixed reports | Ad hoc, unverified | ✅ typed spec |
 
-*Competitor columns describe each product's core experience as we understand it. Several vendors are adding AI features; the gap we target is voice-first plus safe writes to the books.*
+*Competitor columns describe each product's core experience as we understand it, not every feature. Several vendors are adding AI and regional-language features; the gap we target is voice-first plus server-verified writes.*
 
 > **Our position:** classic SaaS is safe but form-heavy and English-first. AI assistants are fluent but can't safely touch the books. **Purser aims to offer both: you talk naturally, and the books stay correct.**
+
+### Works alongside Tally and Zoho, not instead of them (roadmap)
+
+Most Indian small businesses already keep their books in **Tally** or **Zoho Books**, and their accountant files GST from there. Purser is meant to be the **voice front door** that sits on top of those books, not another place to re-enter data.
+
+```mermaid
+flowchart LR
+    V["🗣️ Voice · receipts · approvals"] --> P((Purser))
+    P -->|"confirmed vouchers<br/>(after the 'haan')"| T[Tally / Zoho Books]
+    T -->|"ledgers · invoices · balances"| P
+    style P fill:#1e5631,color:#fff
+```
+
+| Step | How it would plug in | Status |
+|---|---|---|
+| Push confirmed claims and bills as vouchers | Tally accepts XML vouchers over its local HTTP interface; Zoho Books has a REST API | **Not built yet** |
+| Pull invoices, ledgers and balances | Same interfaces, read-only, so briefings and charts use the real books | **Not built yet** |
+| Keep Purser's safety model | Only receipts that passed propose → "haan" → receipt get exported, with the audit ID attached | Design only |
+
+**Why it fits:** every confirmed change already exists as one structured receipt with an audit row (`audit_events`). That is the natural unit to export as a voucher. **Today, Purser runs on its own ledger with synthetic data; there is no Tally or Zoho connection in this build.**
 
 ---
 
@@ -579,6 +604,8 @@ timeline
 | Real Gmail + Calendar for one linked login | Flight/hotel **booking** hands off to the vendor; Purser takes no payment |
 | Live flight/hotel fares (SerpAPI) and ECB FX rates | The eval is **text-path, single runs, 90 turns**; voice was not evaluated end to end |
 | Persisted ledgers, audit trail, receipts in RDS | Jul–Sep budget actuals are a synthetic "imported snapshot" |
+| Eval cost per task (text agent) | Real-time voice audio cost is not included in the per-task figures |
+| Its own append-only ledger | **No Tally / Zoho sync yet** (roadmap above); no GST filing, payroll or bank reconciliation |
 
 Built with Claude Code under the builder's direction. Budget, revenue and contract logic were reused from the builder's own earlier project and are disclosed file by file. Full details: [`HONEST_NOTE.md`](HONEST_NOTE.md).
 
@@ -596,6 +623,7 @@ flowchart LR
 ### Purser in three lines
 1. **The whole back office in one voice agent:** finance, budgets, revenue, contracts, HR, mail, travel.
 2. **Safe by construction:** the AI proposes, the server verifies a spoken "haan", and code writes the ledger.
-3. **Engineered to be efficient:** 100% task success at **6x fewer tokens** and **8.7x lower cost** than a single agent.
+3. **Engineered to be efficient:** 98% vs 93% task success against a single agent on the same model, with **5–6x fewer tokens** per turn (100% on the shipped build, on our 46-scenario set).
+4. **Built to plug into the books you already have:** Tally and Zoho sync is the next step (not built yet).
 
 > **"Priya doesn't need another dashboard. She needs a Purser."**

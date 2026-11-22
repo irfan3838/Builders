@@ -22,6 +22,8 @@ Raw data is in the repo. Every number below links to its source file.
 
 ### Head-to-head on the same code and scenarios (run 3, `evals/reports/run3-20261122/`)
 
+Run 3 used 45 scenarios (6 safety cases). The 46th, "employees can't see budgets", was added after it, so only the shipped run below has 46.
+
 | Arm | Task success | Wrong writes | $ / successful task | Input tokens / turn | 0-LLM turns | p50 / p95 |
 |---|---|---|---|---|---|---|
 | A0 · single agent, 99 tools, `gpt-5.4-mini` | 40/45 (89%) | 0 | $0.0104 | 36,195 | 0% | 7.7 / 14.4 s |
@@ -34,13 +36,13 @@ Raw data is in the repo. Every number below links to its source file.
 |---|---|---|---|---|---|---|---|
 | **B** | **46/46 (100%)** | **0** | **$0.0012** | **5,993** | 20% | 1% | 8.0 / 15.5 s |
 
-**By tier (shipped):** Tier 1 17/17 · Tier 2 12/12 · Tier 3 10/10 · Tier 4 7/7.
+**By tier (shipped):** Tier 1 17/17 · Tier 2 12/12 · Tier 3 10/10 · Tier 4 7/7. **By tier (run 3, B):** 16/17 · 12/12 · 10/10 · 6/6.
 
 ### What it means
 
-- **More accurate:** 98% vs 93% vs 89% on identical code, and 100% on the shipped build. The gains are on chained and edge tasks, where a single agent skips steps.
-- **About 6x fewer tokens per turn.** Finished workflows are "killed" and leave only a one-line summary, so context stays at **5k–10k tokens** instead of growing to 50k+.
-- **8.7x cheaper per successful task** than today's agent.
+- **More accurate:** 98% vs 93% vs 89% on identical code (44 vs 42 vs 40 of 45, one run each), and 100% on the shipped build. The gains are on chained and edge tasks, where a single agent skips steps. This is our own scenario set, and the engine was iterated against it.
+- **5–6x fewer tokens per turn** (6,875 vs 36,195 and 39,709 in the same run). Finished workflows are "killed" and leave only a one-line summary, so context usually stays at **5k–10k tokens** (up to ~17k on chart refinements in the shipped run) instead of growing to 50k+.
+- **Cheaper per successful task:** 1.5x less than a single agent on the same model (A1 $0.0025 vs B $0.0017), and 6x less than today's agent (A0 $0.0104), most of which comes from the cheaper model. The shipped build is $0.0012. These are text-agent costs; real-time voice audio is billed separately.
 - **Confirmations are free and instant:** 18 of 90 turns ("haan", "mat karo") were handled in code with **0 tokens in ~118 ms**. The same turns cost the single agent ~33,600 tokens and ~7.9 s.
 - **Zero wrong writes in every arm and every run.** For B this is structural: no workflow has a confirm tool.
 
@@ -55,13 +57,14 @@ uv run python -m scripts.eval_run --arm A0,A1,B --parallel --runs 1
 - Single run per arm. LLM behaviour varies between runs. The 3-run consistency gate and the strong-model ceiling arm (A2) were stopped early.
 - The eval used the **text path only**. Voice uses the same `run_turn`, but it was not evaluated end to end.
 - Synthetic seeded workspace, 90 turns (the target was 150+).
-- The p95 latency of B is about 1–2 s worse than A0, because of retries and escalations.
+- B is slower at p95 because of retries and escalations: 19.8 s vs 14.4 s for A0 in run 3, and 15.5 s on the shipped build.
+- Per-task costs cover the text agent only. Real-time voice audio (GPT-Live) is billed separately and is not included.
 
 ---
 
 ## 2. Engineering checks (automated tests)
 
-- **~990 test functions (~1,350 collected cases)** (pytest, against a real Postgres), written and run by **independent Sonnet tester agents**. A project hook stops the main coding agent from running tests itself.
+- **~1,030 test functions** (pytest, against a real Postgres), written and run by **independent Sonnet tester agents**. A project hook stops the main coding agent from running tests itself.
 - The latest full run in the workflow round: **1,347 passed, 2 failed.** Both failures are wording assertions that already failed on the previous commit and are unrelated to the workflow engine (source: `docs/workflow-eval-results.md` §10).
 - The independent testers found **real bugs** throughout the build (11 in the first rounds, more in later ones). They were marked as strict xfail with evidence, then fixed. Examples: seed leave counted Fri–Sat as working days; a multi-line email subject broke `EmailMessage`; "nahi nahi 2,01,000" cancelled instead of correcting; employees could see the `budget_change` workflow.
 - `ruff check` is clean on `app/`, `seed/` and `tests/`.

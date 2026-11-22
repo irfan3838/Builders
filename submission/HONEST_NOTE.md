@@ -35,6 +35,8 @@ Built at the event:
 ## Known limits
 - The eval is **text-path only, single runs, 90 turns**. The voice channel uses the same engine but was not evaluated end to end.
 - p95 latency is about 15 s on complex turns. Simple confirmations take about 0.1 s.
+- Eval costs per task cover the text agent only. Real-time voice audio is billed separately and was not measured.
+- **No Tally or Zoho integration yet.** Purser keeps its own append-only ledger. Syncing confirmed receipts to Tally/Zoho as vouchers is a roadmap item, not built. GST filing, payroll and bank reconciliation are out of scope.
 - Organiser rule: no GPUs and no Amazon Bedrock. All AI runs through the OpenAI API, on CPU-only Fargate.
 - CI/CD: the repository has hygiene CI (forbidden files, gitleaks). Infrastructure is Terraform, applied by hand. App deploys run from GitHub Actions on every push to `main` (`.github/workflows/deploy.yml`, OIDC role, no stored AWS keys): build, migrate, roll ECS, check `/health`. The pipeline was added on 22 Nov; its first successful run deployed `7bb2f04`.
 - Infrastructure is sized for a demo: one ECS task, single-AZ RDS with 1-day backups, no CloudWatch alarms. The production steps are listed in [`PRODUCTION.md`](PRODUCTION.md) §4.

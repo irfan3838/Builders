@@ -20,13 +20,15 @@ What makes it different: **the AI can only propose.** The server must hear a spo
 
 > Our persona "Priya" (finance + admin at a 40-person Pune company) is illustrative. The pain points come from the reference products' own workflows.
 
+**Where Purser fits:** most of these businesses already keep their books in **Tally** or **Zoho Books**. Purser is designed as the voice front door on top of them: every confirmed change is already one structured receipt with an audit row, which is the unit to export as a Tally/Zoho voucher. **That sync is on the roadmap and not built yet;** today Purser runs on its own ledger with synthetic data.
+
 ## 2. What is new here (each item links to code)
 
 | # | Novel mechanism | Why it matters | Code |
 |---|---|---|---|
 | 1 | **Server-heard confirmation.** A write commits only when the *server's own transcript* contains a pure "haan / yes / ठीक है", classified by deterministic code. A model or browser claiming "the user said yes" is ignored | Voice becomes safe enough to move money | `app/services/affirmation.py`, `app/services/confirmation.py` |
 | 2 | **Amount grounding.** Every rupee amount in a write must appear in the user's recent speech ("38 hazaar", "1.5L", Devanagari numbers) | The model can't hallucinate a payment | `app/services/revenue/grounding.py`, `app/services/revenue_actions.py` |
-| 3 | **Checklist workflows with "kill".** Instead of one agent juggling 102 tools, a cheap picker chooses 1 of **67 workflows**. Each runs with only 1–8 tools and a checklist that code verifies, then it is *killed* to a one-line summary | **6x fewer tokens, 8.7x cheaper, 100% task success** vs 89% for a single agent | `app/agent/workflows/` |
+| 3 | **Checklist workflows with "kill".** Instead of one agent juggling 102 tools, a cheap picker chooses 1 of **67 workflows**. Each runs with only 1–8 tools and a checklist that code verifies, then it is *killed* to a one-line summary | **5–6x fewer input tokens** per turn; **98% vs 93%** task success against a single agent on the same model (100% on the shipped build) | `app/agent/workflows/` |
 | 4 | **Numbers come from SQL, never from the model.** The agent picks a typed ChartSpec; vetted SQL computes it; the chart, the table and the spoken number all read **one snapshot** | Speech and screen can't disagree | `app/services/charts.py` |
 | 5 | **Grounded contract liability radar.** The model only *points* at phrases. Code checks each phrase is in the text, then resolves who bears it, the cap in ₹, and the real calendar deadlines | "What do we owe, how much, by when", not a summary | `app/services/contracts/` |
 | 6 | **Teach-by-voice routines** with tools frozen to your role and an injection deny-list **in code** | Purser learns *your* workflow and still can't skip the yes | `app/agent/workflows/custom.py` |
@@ -46,15 +48,15 @@ What makes it different: **the AI can only propose.** The server must hear a spo
 
 ## 4. Headline numbers (46 conversations, 90 turns, EN / Hinglish / Hindi)
 
-| | Single agent (A0) | **Purser workflows (shipped)** |
-|---|---|---|
-| Task success | 89% | **100%** |
-| Wrong database writes | 0 | **0** |
-| Input tokens per turn | 36,195 | **5,993** (6x fewer) |
-| US$ per successful task | $0.0104 | **$0.0012** (8.7x cheaper) |
-| Confirming "haan" | ~33.6k tokens, 7.9 s | **0 tokens, 118 ms** |
+| | Today's agent (A0) | Single agent, same model (A1) | **Purser workflows (B)** | B, shipped build |
+|---|---|---|---|---|
+| Task success | 40/45 (89%) | 42/45 (93%) | **44/45 (98%)** | 46/46 (100%) |
+| Wrong database writes | 0 | 0 | **0** | 0 |
+| Input tokens per turn | 36,195 | 39,709 | **6,875** (5–6x fewer) | 5,993 |
+| US$ per successful task (text) | $0.0104 | $0.0025 | **$0.0017** (1.5x less than A1) | $0.0012 |
+| Confirming "haan" | ~33.6k tokens, 7.9 s | same | **0 tokens, 118 ms** | same |
 
-Single run per arm, text path only. Limits are in [`EVIDENCE.md`](EVIDENCE.md).
+A0, A1 and B are one run on the same code and scenarios (run 3); the shipped column is a later run of B with one extra safety scenario. Single run per arm, text path only, and per-task costs exclude real-time voice audio. Limits are in [`EVIDENCE.md`](EVIDENCE.md).
 
 ## 5. Verify it yourself in 2 minutes
 
@@ -69,7 +71,7 @@ Logins are in the submission form, not in the repo.
 
 ## 6. Scale built at the event
 
-~19,900 lines of Python · ~4,600 lines of TypeScript · **102 typed agent tools** · **67 workflows** · ~990 test functions (~1,350 collected cases) · Terraform for the whole AWS stack.
+~19,900 lines of Python · ~4,600 lines of TypeScript · **102 typed agent tools** · **67 workflows** · ~1,030 test functions · Terraform for the whole AWS stack.
 
 ## Repository map
 ```text

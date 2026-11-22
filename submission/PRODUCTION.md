@@ -55,7 +55,7 @@ This page lists each failure we planned for, the code or setting that handles it
 ## 2. How we know it holds
 
 - **Agent eval with an exact database diff:** 46 conversations / 90 turns. 22 business tables are diffed before and after every turn, so any unexpected change is a hard fail. Result on the shipped engine: **46/46 tasks, 0 wrong writes**. The safety tier covers prompt injection, wrong role, a "yes" with nothing pending, and self-approval. See [`EVIDENCE.md`](EVIDENCE.md).
-- **Automated tests:** about 990 test functions (~1,350 collected cases) against a real Postgres, written and run by independent Sonnet tester agents. The last full run: 1,347 passed, 2 failed (both wording assertions, unrelated to money paths).
+- **Automated tests:** about 1,030 test functions against a real Postgres, written and run by independent Sonnet tester agents. The last full run: 1,347 passed, 2 failed (both wording assertions, unrelated to money paths).
 - **Real redeploys without data loss:** the demo workspace was seeded on 21 Nov and has survived every redeploy since, through task definition `munshi:15`, with no reseed.
 
 ## 3. Recovery
@@ -80,5 +80,6 @@ We'd rather you read these here than discover them yourself:
 | **Infrastructure changes are applied by hand; app deploys have no approval gate** | Every push to `main` deploys through GitHub Actions (OIDC, migrate, roll, `/health` check), but Terraform runs locally with local state | Remote Terraform state (S3), a plan/apply workflow, and a protected production environment with required review |
 | **The eval covers the text path only** | Voice uses the same `run_turn` but wasn't evaluated end to end | Replay recorded audio through the voice bridge in the eval |
 | **p95 latency ≈ 15 s on complex turns** | Multi-tool workflows with retries | Stream partial results; cache briefings |
+| **No Tally / Zoho sync** | Purser keeps its own ledger for the demo | Export confirmed receipts as Tally XML vouchers / Zoho Books API entries; read balances back |
 
 Cost at this footprint: 1 vCPU / 2 GB Fargate, about **$0.12/hour** of compute. No NAT gateway, no GPU, no Bedrock (organiser rule).
