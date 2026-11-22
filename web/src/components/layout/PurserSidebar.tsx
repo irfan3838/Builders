@@ -6,6 +6,7 @@ import {
   Building2, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, CreditCard, FileText, Folder, House, Layers, LayoutGrid, LifeBuoy, ListTodo,
   LogOut, Mail, Settings, User, X,
 } from "lucide-react";
+import { createPortal } from "react-dom";
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api";
 import { dur, ease, spring } from "../../animations/tokens";
@@ -196,14 +197,31 @@ function Profile({ collapsed }: { collapsed: boolean }) {
         {!collapsed && <span style={{ flex: 1, minWidth: 0 }}><div className="profile-name">{P.me.name.split(" ")[0]}</div><div className="profile-role">{role}</div></span>}
         {!collapsed && <motion.span animate={{ rotate: open ? 180 : 0 }}><ChevronDown size={18} color="var(--muted)" /></motion.span>}
       </button>
-      <AnimatePresence>{settings && <SettingsDialog onClose={() => setSettings(false)} />}</AnimatePresence>
+      {/* Portal: the phone drawer is transformed, which would trap a fixed overlay inside it. */}
+      {createPortal(<AnimatePresence>{settings && <SettingsDialog onClose={() => setSettings(false)} />}</AnimatePresence>, document.body)}
     </div>
   );
 }
 
-export default function PurserSidebar() {
+const PHONE = "(max-width: 760px)";
+
+function usePhone() {
+  const [phone, setPhone] = useState(() => matchMedia(PHONE).matches);
+  useEffect(() => {
+    const m = matchMedia(PHONE);
+    const on = () => setPhone(m.matches);
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, []);
+  return phone;
+}
+
+export default function PurserSidebar({ open = false, onNavigate }: { open?: boolean; onNavigate?: () => void }) {
   const P = usePurser();
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === "1" || innerWidth < 900);
+  const phone = usePhone();
+  const [pref, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === "1" || innerWidth < 900);
+  const collapsed = phone ? false : pref;  // the phone drawer is always full width
+  const go = (v: View) => { P.go(v); onNavigate?.(); };
   const toggle = () => setCollapsed((c) => { localStorage.setItem(COLLAPSE_KEY, c ? "0" : "1"); return !c; });
   const pr = P.priorities;
   const ic = 21;
@@ -225,7 +243,7 @@ export default function PurserSidebar() {
   ] as NavDef[]).filter((d) => allow.includes(d.view)), [pr, allow]);
 
   return (
-    <motion.nav className="sidebar" aria-label="Purser navigation" initial={false} animate={{ width: collapsed ? 78 : 240 }} transition={{ duration: dur.sidebar, ease }}>
+    <motion.nav id="purser-nav" className={`sidebar ${open ? "open" : ""}`} aria-label="Purser navigation" initial={false} animate={{ width: phone ? 264 : collapsed ? 78 : 240 }} transition={{ duration: dur.sidebar, ease }}>
       <div className="sb-top">
         <Wordmark collapsed={collapsed} />
         <button className="icon-btn sb-collapse" onClick={toggle} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed}
@@ -236,11 +254,11 @@ export default function PurserSidebar() {
       <div className="sb-scroll">
         <LayoutGroup id="nav">
           <div className="sb-section">
-            {primary.map((d) => <NavButton key={d.view} def={d} active={P.view === d.view} collapsed={collapsed} onClick={() => P.go(d.view)} id={d.view === "mail" ? "nav-mail" : undefined} />)}
+            {primary.map((d) => <NavButton key={d.view} def={d} active={P.view === d.view} collapsed={collapsed} onClick={() => go(d.view)} id={d.view === "mail" ? "nav-mail" : undefined} />)}
           </div>
           <div className="sb-section">
             {!collapsed && compartments.length > 0 && <div className="sb-label">Compartments</div>}
-            {compartments.map((d) => <NavButton key={d.view} def={d} active={P.view === d.view} collapsed={collapsed} onClick={() => P.go(d.view)} id={`nav-${d.view}`} />)}
+            {compartments.map((d) => <NavButton key={d.view} def={d} active={P.view === d.view} collapsed={collapsed} onClick={() => go(d.view)} id={`nav-${d.view}`} />)}
           </div>
         </LayoutGroup>
         {!collapsed && (

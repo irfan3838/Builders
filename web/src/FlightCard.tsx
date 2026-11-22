@@ -95,7 +95,7 @@ export function HotelOptionsCard({ card }: { card: any }) {
         <h2>🏨 {card.city} · {d(card.check_in)} → {d(card.check_out)} · {card.nights} night{card.nights === 1 ? "" : "s"}</h2>
       </div>
       {card.note && <p className="flag flag-warn" role="note">{card.note}</p>}
-      <div className="fl-tabs" role="tablist" aria-label="Sort hotels" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+      <div className="fl-tabs fl-tabs-3" role="tablist" aria-label="Sort hotels">
         {(["best", "cheapest", "rating"] as const).map((s) => (
           <button key={s} role="tab" aria-selected={sort === s} className={`fl-tab ${sort === s ? "on" : ""}`} onClick={() => setSort(s)}>
             {s === "best" ? "Best match" : s === "cheapest" ? "Cheapest" : "Top rated"}</button>
