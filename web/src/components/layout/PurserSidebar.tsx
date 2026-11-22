@@ -14,6 +14,7 @@ import { usePurser, View } from "../../state/store";
 import { useAssistant } from "../assistant/PurserVoiceController";
 import AnimatedCounter from "../shared/AnimatedCounter";
 import RoutinesPanel from "../settings/RoutinesPanel";
+import { useOnboarding } from "../onboarding/Onboarding";
 
 const COLLAPSE_KEY = "purser.sidebar.collapsed";
 
@@ -34,7 +35,7 @@ function Wordmark({ collapsed }: { collapsed: boolean }) {
 function NavButton({ def, active, collapsed, onClick, id }: { def: NavDef; active: boolean; collapsed: boolean; onClick: () => void; id?: string }) {
   const [tip, setTip] = useState(false);
   return (
-    <button id={id} className="nav-item" aria-current={active ? "page" : undefined} onClick={onClick}
+    <button id={id} data-tour={`nav-${def.view}`} className="nav-item" aria-current={active ? "page" : undefined} onClick={onClick}
       onMouseEnter={() => setTip(true)} onMouseLeave={() => setTip(false)} onFocus={() => setTip(true)} onBlur={() => setTip(false)}
       aria-label={collapsed ? `${def.label}${def.count ? `, ${def.count}` : ""}` : undefined}>
       <span className="nav-hover" />
@@ -151,6 +152,7 @@ function Notifications() {
 function SettingsDialog({ onClose }: { onClose: () => void }) {
   const A = useAssistant();
   const P = usePurser();
+  const O = useOnboarding();
   useEffect(() => { const k = (e: KeyboardEvent) => e.key === "Escape" && onClose(); addEventListener("keydown", k); return () => removeEventListener("keydown", k); }, [onClose]);
   return (
     <motion.div className="scrim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -162,6 +164,10 @@ function SettingsDialog({ onClose }: { onClose: () => void }) {
           Hands-free: wake Purser by saying “Purser” (Chrome/Edge; uses the browser's speech service while armed)
         </label>
         <RoutinesPanel onRun={(u) => { onClose(); A.send(u); }} />
+        <div className="replay-row">
+          <span>New here, or want a refresher?</span>
+          <button className="btn btn-sm" onClick={() => { onClose(); O.replay(); }}>Replay the tour</button>
+        </div>
         <p className="fine">Signed in as {P.me.name} · {P.me.role.replace("_", " ")}.</p>
       </motion.div>
     </motion.div>
@@ -253,16 +259,16 @@ export default function PurserSidebar({ open = false, onNavigate }: { open?: boo
       </div>
       <div className="sb-scroll">
         <LayoutGroup id="nav">
-          <div className="sb-section">
+          <div className="sb-section" data-tour="primary-nav">
             {primary.map((d) => <NavButton key={d.view} def={d} active={P.view === d.view} collapsed={collapsed} onClick={() => go(d.view)} id={d.view === "mail" ? "nav-mail" : undefined} />)}
           </div>
-          <div className="sb-section">
+          <div className="sb-section" data-tour={compartments.length ? "compartments" : undefined}>
             {!collapsed && compartments.length > 0 && <div className="sb-label">Compartments</div>}
             {compartments.map((d) => <NavButton key={d.view} def={d} active={P.view === d.view} collapsed={collapsed} onClick={() => go(d.view)} id={`nav-${d.view}`} />)}
           </div>
         </LayoutGroup>
         {!collapsed && (
-          <div className="sb-section">
+          <div className="sb-section" data-tour="notifications">
             <div className="sb-label">Notifications</div>
             <Notifications />
           </div>

@@ -13,6 +13,7 @@ import PurserSidebar from "./PurserSidebar";
 import WorkspaceView from "../../views/WorkspaceView";
 import { ViewRouter } from "../../views/ViewRouter";
 import { canSee } from "../../roles";
+import { OnboardingProvider } from "../onboarding/Onboarding";
 
 export default function AppShell() {
   const P = usePurser();
@@ -45,6 +46,7 @@ export default function AppShell() {
   }, [A]);
 
   return (
+    <OnboardingProvider setNavOpen={setNavOpen}>
     <div className="shell" data-view={P.view === "workspace" ? "workspace" : "other"}>
       <AmbientRibbons energy={energy} anchor="#purser-orb, .mini-orb" />
       <div className="vignette" />
@@ -73,5 +75,6 @@ export default function AppShell() {
           <motion.p initial={{ scale: 0.94 }} animate={{ scale: 1 }}>Drop to hand it to Purser</motion.p>
         </motion.div>)}</AnimatePresence>
     </div>
+    </OnboardingProvider>
   );
 }
