@@ -22,7 +22,10 @@ export const spring = {
 /** Card reveal used by the panel and the views (stagger via `custom` index). */
 export const reveal = {
   hidden: { opacity: 0, y: 14, filter: "blur(4px)" },
-  show: (i = 0) => ({ opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: dur.card, ease, delay: i * 0.06 } }),
+  // transitionEnd drops the filter: any filter (even blur(0px)) makes a backdrop root, so nested .glass would stop
+  // blurring the ambient ribbons behind the page and they'd read as drawn on top of the cards.
+  show: (i = 0) => ({ opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: dur.card, ease, delay: i * 0.06 },
+    transitionEnd: { filter: "none" } }),
   exit: { opacity: 0, y: -8, scale: 0.98, filter: "blur(4px)", transition: { duration: 0.22, ease } },
 };
 
