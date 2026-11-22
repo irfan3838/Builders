@@ -1,7 +1,7 @@
 # AGENTS.md: set up, launch and use Purser
 
 **Live deployment (AWS):** https://d342yicbppf96p.cloudfront.net · health check: `GET /health` returns `{"ok":true}`
-**Demo video:** [VIDEO.md](VIDEO.md) · **Story, evidence, honest note:** [`submission/`](submission/README.md)
+**Demo video:** [VIDEO.md](VIDEO.md) · **Slides (PDF, 5 pages):** [Purser-shortlist-slides.pdf](Purser-shortlist-slides.pdf) · **Story, evidence, honest note:** [`submission/`](submission/README.md)
 
 Purser is a voice-first back office for Indian small businesses: expenses, bills, budgets, revenue, contracts, HR,
 mail and travel, in **Hindi, Hinglish or English**. One AI agent (OpenAI) proposes every change. Plain code shows the

@@ -6,7 +6,7 @@ A voice-first back office for Indian small businesses: expenses, bills, budgets,
 
 | Submission requirement | Where |
 |---|---|
-| Setup, logins, journeys (reviewers start here) | [`AGENTS.md`](AGENTS.md) · video: [`VIDEO.md`](VIDEO.md) |
+| Setup, logins, journeys (reviewers start here) | [`AGENTS.md`](AGENTS.md) · video: [`VIDEO.md`](VIDEO.md) · slides: [`Purser-shortlist-slides.pdf`](Purser-shortlist-slides.pdf) |
 | 1. Working demo, end to end on fresh input | Live on AWS: **https://d342yicbppf96p.cloudfront.net** · script: [`submission/DEMO.md`](submission/DEMO.md) |
 | 2. Source code | This repository (FastAPI `app/`, React `web/`, Terraform `infra/terraform/`, tests `tests/`) |
 | 3. Evidence of results | [`submission/EVIDENCE.md`](submission/EVIDENCE.md): baseline comparison (100% vs 89% task success, 8.7x cheaper), outputs on new data, proof that data persists |
