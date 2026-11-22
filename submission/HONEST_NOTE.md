@@ -38,5 +38,5 @@ Built at the event:
 - Organiser rule: no GPUs and no Amazon Bedrock. All AI runs through the OpenAI API, on CPU-only Fargate.
 - CI/CD: the repository has hygiene CI (forbidden files, gitleaks). Deployment is done with Terraform and scripts (`docs/deployment.md`), not yet with a GitHub Actions deploy job.
 - Infrastructure is sized for a demo: one ECS task, single-AZ RDS with 1-day backups, no CloudWatch alarms. The production steps are listed in [`PRODUCTION.md`](PRODUCTION.md) §4.
-- The 90-turn eval ran on commit `8c39078`. The live build is `2dcc7dc`, which adds targeted fixes covered by extra tests; the full eval was not re-run on it.
+- The 90-turn eval ran on commit `8c39078`. The live build is `3ff4f83`: it adds targeted agent fixes (in `2dcc7dc`, covered by extra tests) and a visual-only UI fix (ribbons behind the cards). The full eval was not re-run on it.
 - Market figures in the README (MSME count, language reach) come from public government and census sources, linked there. The persona "Priya" is illustrative, not a customer interview.
