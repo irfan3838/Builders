@@ -70,3 +70,8 @@ infra/terraform/terraform.tfvars
 
 # local OAuth client files (Google Calendar)
 .secrets/
+
+# Builder's private agent rules and hooks (local only; reviewers read AGENTS.md)
+CLAUDE.local.md
+.claude/hooks/
+.claude/settings.json

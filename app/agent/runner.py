@@ -7,6 +7,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 
+import openai
 from agents import Runner
 from agents.extensions.memory import SQLAlchemySession
 from sqlalchemy import select
@@ -21,6 +22,9 @@ from app.services import confirmation, proposals
 
 log = logging.getLogger("purser.runner")
 TURN_TIMEOUT_S = 90
+NO_KEY_REPLY = ("AI is off on this server: OPENAI_API_KEY is not set. Add it to .env and restart to talk to Purser. "
+                "Logins, dashboards, records and uploads still work.")
+AI_DOWN_REPLY = "I can't reach the AI service right now (the OpenAI key was rejected or the network is down). Please try again."
 
 
 @dataclass
@@ -60,6 +64,8 @@ async def run_turn(actor: Actor, user_text: str, *, channel: str = "text", sourc
     if record_turn:
         async with db.session_scope() as s:
             await confirmation.record_turn(s, actor, user_text, source=source, start_ms=start_ms, end_ms=end_ms)
+    if not get_settings().ai_enabled:
+        return TurnResult(reply=NO_KEY_REPLY, metrics={"route": "no_key"})
     if get_settings().purser_workflows and model is None:
         return await _run_workflow_turn(actor, user_text, channel=channel, presented_offset_ms=presented_offset_ms)
     ctx = PurserContext(actor=actor, channel=channel)
@@ -83,6 +89,10 @@ async def run_turn(actor: Actor, user_text: str, *, channel: str = "text", sourc
     except TimeoutError:
         reply, usage = "Sorry, that took too long. Please say it again.", {}
         metrics["timeout"] = True
+    except (openai.AuthenticationError, openai.APIConnectionError) as e:
+        log.error("turn failed: openai %s", type(e).__name__)
+        reply, usage = AI_DOWN_REPLY, {}
+        metrics["ai_error"] = type(e).__name__
     latency = int((time.perf_counter() - t0) * 1000)
     await _mark_presented(actor, presented_offset_ms)
     log.info("turn conv=%s channel=%s tools=%s ms=%s usage=%s", actor.conversation_id, channel,
@@ -111,6 +121,10 @@ async def _run_workflow_turn(actor: Actor, user_text: str, *, channel: str,
     except TimeoutError:
         reply, ctx = "Sorry, that took too long. Please say it again.", PurserContext(actor=actor, channel=channel)
         metrics = {"route": "workflow", "timeout": True}
+    except (openai.AuthenticationError, openai.APIConnectionError) as e:
+        log.error("workflow turn failed: openai %s", type(e).__name__)
+        reply, ctx = AI_DOWN_REPLY, PurserContext(actor=actor, channel=channel)
+        metrics = {"route": "workflow", "ai_error": type(e).__name__}
     latency = int((time.perf_counter() - t0) * 1000)
     await _mark_presented(actor, presented_offset_ms)
     usage = {"input_tokens": sum(m["input_tokens"] for m in metrics.get("models", {}).values()),

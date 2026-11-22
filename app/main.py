@@ -186,7 +186,7 @@ async def upload(file: UploadFile = File(...), actor: Actor = auth.ActorDep, ann
     if announce and actor.conversation_id:
         from app.voice import live_bridge
         bridge = live_bridge.bridge_for(actor.conversation_id)
-        if r.document_id and r.outcome == "accepted":
+        if r.document_id and r.outcome == "accepted" and get_settings().ai_enabled:
             from app.agent import reading
             reading.prefetch(actor, r.document_id)  # start reading now, in parallel with the agent's first step
             if bridge:
@@ -544,6 +544,8 @@ async def voice_session(body: SDPIn, actor: Actor = auth.ActorDep) -> dict:
     from app.voice import live_bridge
     if not actor.conversation_id:
         raise HTTPException(400, "X-Conversation-Id header required")
+    if not get_settings().ai_enabled:
+        raise HTTPException(503, "Voice is off on this server: OPENAI_API_KEY is not set. Add it to .env and restart.")
     try:
         return await live_bridge.start(actor, body.sdp, body.wake_text)
     except APIError as e:

@@ -85,6 +85,14 @@ class Settings(BaseSettings):
         return all(v and v != "replace-me" for v in vals)
 
     @property
+    def ai_enabled(self) -> bool:
+        """No-key mode when False: the app boots and every screen works; agent and voice turns explain how to enable AI."""
+        import os
+
+        key = os.getenv("OPENAI_API_KEY", "").strip()
+        return bool(key) and key != "replace-me"
+
+    @property
     def agent_model(self) -> str:
         return self.openai_model_strong or self.openai_model_fast
 
