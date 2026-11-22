@@ -633,7 +633,7 @@ def test_send_smtp_builds_expected_message(smtp):
     msg = srv.sent[0]
     assert (srv.host, srv.port, srv.creds) == ("smtp.gmail.com", 465, ("purser@test.invalid", "not-a-secret"))
     assert msg["To"] == "arjun@gmail.test" and msg["From"] == "Purser <purser@test.invalid>" and msg["Subject"] == "Leave L2 approved"
-    assert mid == msg["Message-ID"] and mid.startswith("<") and "Sent by Purser" in msg.get_content() and "Hi Arjun" in msg.get_content()
+    assert mid == msg["Message-ID"] and mid.startswith("<") and msg.get_content().strip() == "Hi Arjun"   # body sent as-is, no footer
 
 
 def test_send_smtp_never_allows_header_injection(smtp):
@@ -719,7 +719,10 @@ async def test_message_channels_and_preview(seeded, mail):
     head = p.preview["lines"][0]
     assert head.startswith("To: ") and head.endswith("(2 people).") and "Arjun Mehta" in head and "Neha Iyer" in head
     assert "Message: Office closed Friday" in p.preview["lines"] and "Email: 1 will be emailed; 1 get the inbox copy only" in " ".join(p.preview["lines"])
-    assert p.preview["lines"][-1] == "Channels: Purser inbox + email."          # 'sms' silently dropped
+    lines = p.preview["lines"]
+    ci = next(i for i, ln in enumerate(lines) if ln.startswith("Channels: "))
+    assert lines[ci] == "Channels: Purser inbox + email."          # 'sms' silently dropped
+    assert lines[ci + 1].startswith("Email signature:")
     _, out = await propose_and_confirm(priya, "send_message", {"audience": "all", "subject": "Close", "body": "Office closed Friday",
                                                               "channels": ["inbox", "email", "sms"]})
     assert out.receipt.effects[0]["inbox"] == 2 and out.receipt.effects[0]["email_queued"] == 1 and out.receipt.effects[0]["email_skipped"] == 1
@@ -782,7 +785,8 @@ async def test_onboarding_creates_everything_in_one_transaction(seeded):
     msgs = await messages_for(out.receipt.id)
     assert [(m.channel, m.kind, m.recipient_user_id, m.status) for m in msgs][0] == ("inbox", "welcome", uid, "delivered")
     assert msgs[1].channel == "email" and msgs[1].status == "skipped" and msgs[1].status_detail == "no_email"
-    assert "Welcome to the team, Neha!" in msgs[0].body and "reporting to Priya Sharma" in msgs[0].body
+    assert msgs[0].body.startswith("Dear Neha,\n\nWelcome to the team! You join as Sales Executive in Sales on ") and "Welcome to the team, Neha!" not in msgs[0].body
+    assert "reporting to Priya Sharma" in msgs[0].body
     assert "employee.onboarded" in await _audit_actions(out.receipt.id)
     assert (await bal(uid))["CL"]["available"] == 12 and (await bal(uid))["EL"]["available"] == 15
     await assert_leave_conservation()
@@ -828,7 +832,8 @@ async def test_onboarding_welcome_email_follows_allowlist(seeded, mail):
     async with db.session_scope() as s:
         pv = await proposals.create(s, priya, "onboard_employee", {**ONBOARD, "personal_email": "kapoor@gmail.test"})
         pv2 = await proposals.create(s, priya, "onboard_employee", {**ONBOARD, "name": "Ravi Shah", "personal_email": "ravi@gmail.test"})
-    assert "welcome email to kapoor@gmail.test" in pv.preview["lines"][-1] and "not on the demo allow-list" in pv2.preview["lines"][-1]
+    mail_line = lambda pv_: next(ln for ln in pv_.preview["lines"] if ln.startswith("Welcome message in the Purser inbox"))  # signature lines follow it when deliverable
+    assert "welcome email to kapoor@gmail.test" in mail_line(pv) and "not on the email allow-list" in mail_line(pv2)
     _, out = await propose_and_confirm(priya, "onboard_employee", {**ONBOARD, "personal_email": "kapoor@gmail.test"})
     email = next(m for m in await messages_for(out.receipt.id) if m.channel == "email")
     assert (email.status, email.email_to) == ("queued", "kapoor@gmail.test")

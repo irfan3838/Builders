@@ -11,11 +11,12 @@ from zoneinfo import ZoneInfo
 
 from agents import RunContextWrapper, function_tool
 
+from app import db
 from app.agent.context import PurserContext, safe_tool
 from app.agent.tools.proposals import _propose
 from app.config import get_settings
 from app.errors import FORBIDDEN, VALIDATION, DomainError
-from app.services import agenda
+from app.services import agenda, signature
 from app.services.google import gmail
 from app.services.google.auth import GoogleError
 from app.services.records import today_ist
@@ -109,6 +110,8 @@ async def save_mail_draft(ctx: Ctx, body: str, to: list[str] | None = None, subj
     """Save an email as a Gmail DRAFT (nothing is sent). For a reply pass reply_thread_id; recipient and subject follow the thread."""
     _need_google(ctx)
     a = ctx.context.actor
+    async with db.session_scope() as s:
+        body = signature.sign(body, await signature.for_actor(s, a))
     if reply_thread_id:
         rc = await _g(gmail.reply_context(reply_thread_id))
         to, subject = to or rc["to"], subject or rc["subject"]
@@ -126,7 +129,7 @@ async def save_mail_draft(ctx: Ctx, body: str, to: list[str] | None = None, subj
 async def propose_email(ctx: Ctx, body: str, to: list[str] | None = None, subject: str | None = None, cc: list[str] | None = None,
                         reply_thread_id: str | None = None) -> dict:
     """Propose sending an email FROM the user's own Gmail. Write the body yourself (clear, polite, short) in the language
-    the user asked for. For a reply pass reply_thread_id (recipient and 'Re:' subject come from the thread). Spell back any
+    the user asked for, without a sign-off (the standard signature is added). For a reply pass reply_thread_id (recipient and 'Re:' subject come from the thread). Spell back any
     spoken address. The preview is the question; it sends only after the user confirms."""
     _need_google(ctx)
     return await _propose(ctx, "gmail_send", {"body": body, "to": to, "subject": subject, "cc": cc, "reply_thread_id": reply_thread_id})

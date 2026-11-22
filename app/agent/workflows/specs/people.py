@@ -20,11 +20,21 @@ WORKFLOWS = [
       ("list_leave_requests", "propose_leave_decision"),
       ("Find the L… reference with list_leave_requests (awaiting_my_decision).", "If several fit, ask which one.",
        "Call propose_leave_decision.", _ASK)),
-    W("onboarding", M, "Onboard a new joiner (HR/admin): 'onboard Rahul as sales exec from 1st Dec', 'new joiner'.",
-      ("find_people", "propose_onboarding", "get_onboarding_status"),
-      ("Collect name, designation, department, start date and manager (find_people). Ask for a personal email "
-       "only if they want a welcome email.", "Status questions: get_onboarding_status.",
-       "Call propose_onboarding.", _ASK), required=("propose_onboarding", "get_onboarding_status"),
+    W("onboarding", M, "Onboard a new joiner or selected candidate (HR/admin): 'onboard Rahul as sales exec from "
+      "1st Dec', 'new joiner', 'ask Rahul for his documents', 'documents aa gaye, Rahul ka login banao', "
+      "'onboarding status'.",
+      ("find_people", "propose_onboarding_documents", "propose_onboarding", "get_onboarding_status"),
+      ("Two stages. STAGE 1 (default for 'onboard X as Y from <date>' and 'ask for documents'): collect full name, "
+       "position and joining date (resolve dates from today; ask only for what is missing).",
+       "Then ask for the candidate's personal email address (the request goes there). Never invent or guess an "
+       "address; spell back what the user said.",
+       "Call propose_onboarding_documents (department and manager via find_people only if the user named them; "
+       "extra_items only for extra things the user asked to collect). Read 'say'; ask; stop.",
+       "STAGE 2 (only when the user says the documents are in or asks to create the login/account): collect "
+       "department and manager (find_people), then call propose_onboarding with the same name, designation, start "
+       "date and personal email. Read 'say'; ask; stop.",
+       "Status questions: get_onboarding_status."),
+      required=("propose_onboarding_documents", "propose_onboarding", "get_onboarding_status"),
       roles=frozenset({"admin", "hr_admin"})),
     W("send_message", M, "Send a message, email or announcement to colleagues or outsiders: 'Sales team ko message "
       "bhejo', 'announce the offsite', 'email Arjun', 'mail this to vendor@x.com'.",

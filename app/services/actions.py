@@ -557,6 +557,9 @@ class OnboardEmployee:
                  f"Leave balances for this year: {grants}.",
                  f"Onboarding checklist: {len(people.ONBOARDING_CHECKLIST)} tasks (laptop, KYC and bank details, policy acknowledgement, first-week plan).",
                  f"Welcome message in the Purser inbox; {mail}."]
+        if verdict == "deliverable":
+            from app.services import signature
+            lines += ["Welcome email signature:", *(await signature.for_actor(s, actor)).splitlines()]
         return Plan("Onboard employee", lines, f"Onboard {name} as {args.get('designation') or 'employee'} in "
                     f"{args.get('department') or 'the company'}, starting {_fmt_date(start)}?", [])
 
@@ -584,11 +587,13 @@ class OnboardEmployee:
             s.add(OnboardingTask(workspace_id=actor.workspace_id, user_id=u.id, title=title, owner=owner,
                                  due_date=start + timedelta(days=offset), status="done" if owner == "hr" and offset == 0 else "open",
                                  done_by=actor.user_id if owner == "hr" and offset == 0 else None))
-        body = (f"Welcome to the team, {name.split()[0]}!\n\nYou join as {args.get('designation') or 'a team member'} in "
+        body = (f"Dear {name.split()[0]},\n\nWelcome to the team! You join as {args.get('designation') or 'a team member'} in "
                 f"{args.get('department') or 'the company'} on {_fmt_date(start)}"
-                + (f", reporting to {manager.display_name}" if manager else "") + ".\n"
-                "Your Purser account is ready: ask it about leave, expenses and policies by voice, in Hindi or English.\n"
-                "Before day one, please keep your PAN, Aadhaar and bank details ready.")
+                + (f", reporting to {manager.display_name}" if manager else "") + ".\n\n"
+                "Your Purser account is ready: ask it about leave, expenses and policies by voice, in Hindi or English.\n\n"
+                "If you have not shared them yet, please send your PAN, Aadhaar and bank details before day one, and "
+                "carry the original Aadhaar and PAN cards on your joining day for verification.\n\n"
+                "We look forward to working with you.")
         sent = await messaging.compose(s, actor, [u], kind="welcome", subject="Welcome aboard", body=body,
                                        channels=["inbox", "email"], receipt_id=receipt_id)
         await audit.record(s, actor, "employee.onboarded", record_type="user", record_id=u.id, record_ref=f"U{u.id}",
@@ -658,6 +663,9 @@ class SendMessage:
                 lines.append(f"Email to {e}: " + ("will be sent." if v == "deliverable" else
                              "cannot be sent (email not configured)." if v == "email_not_configured" else "cannot be sent (not on the allow-list)."))
         lines.append("Channels: " + " + ".join("Purser inbox" if c == "inbox" else "email" for c in channels) + ".")
+        if "email" in channels:
+            from app.services import signature
+            lines += ["Email signature:", *(await signature.for_actor(s, actor)).splitlines()]
         kind = "announcement" if audience in ("all", "department") else "message"
         return Plan("Send announcement" if kind == "announcement" else "Send message", lines,
                     f"Send this {kind} to {names}?", [])
@@ -805,3 +813,8 @@ ACTIONS.update({a.kind: a for a in _WORK_ACTIONS})
 from app.services.custom_workflows import CUSTOM_WORKFLOW_ACTIONS as _CUSTOM_WORKFLOW_ACTIONS  # noqa: E402
 
 ACTIONS.update({a.kind: a for a in _CUSTOM_WORKFLOW_ACTIONS})
+
+# Pre-onboarding document request (formal template email to the candidate).
+from app.services.onboarding_docs import ONBOARDING_DOC_ACTIONS as _ONBOARDING_DOC_ACTIONS  # noqa: E402
+
+ACTIONS.update({a.kind: a for a in _ONBOARDING_DOC_ACTIONS})

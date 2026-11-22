@@ -17,7 +17,7 @@ from app import db
 from app.config import get_settings
 from app.errors import FORBIDDEN, VALIDATION, DomainError
 from app.models import GoogleOp
-from app.services import audit
+from app.services import audit, signature
 from app.services.actions import Execution, Plan
 from app.services.google import gcal, gmail
 from app.services.google.auth import GoogleError
@@ -96,6 +96,7 @@ class SendEmail:
     async def plan(self, s, actor, args):
         _require_google(actor)
         r = await self._resolve(args)
+        r["body"] = signature.sign(r["body"], await signature.for_actor(s, actor))
         lines = [f"From: {actor.email} (your Gmail)", f"To: {', '.join(r['to'])}"]
         if r["cc"]:
             lines.append(f"Cc: {', '.join(r['cc'])}")
@@ -108,6 +109,7 @@ class SendEmail:
     async def execute(self, s, actor, args, receipt_id):
         _require_google(actor)
         r = await self._resolve(args)
+        r["body"] = signature.sign(r["body"], await signature.for_actor(s, actor))
         return await _queue(s, actor, "send_email", {**r, "sender": actor.email}, receipt_id,
                             f"Email '{r['subject']}' to {', '.join(r['to'][:2])} queued")
 

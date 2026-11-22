@@ -43,13 +43,15 @@ def address_plan(address: str | None) -> tuple[str | None, str]:
 async def compose(s: AsyncSession, actor: Actor, recipients: list[User], *, kind: str, subject: str, body: str,
                   channels: list[str], receipt_id: int | None, external_emails: list[str] | None = None) -> dict:
     """external_emails are people outside the workspace: email only (they have no Purser inbox)."""
+    from app.services import signature
     batch = uuid.uuid4().hex
+    signed = signature.sign(body, await signature.for_actor(s, actor))  # email copies carry the standard signature
     counts = {"inbox": 0, "email_queued": 0, "email_skipped": 0}
     for addr in external_emails or []:
         to, verdict = address_plan(addr)
         ok = verdict == "deliverable"
         s.add(Message(workspace_id=actor.workspace_id, ref="pending", kind=kind, channel="email", sender_id=actor.user_id,
-                      recipient_user_id=None, email_to=to, subject=subject, body=body,
+                      recipient_user_id=None, email_to=to, subject=subject, body=signed,
                       status="queued" if ok else "skipped", status_detail=None if ok else verdict, batch_id=batch,
                       receipt_id=receipt_id))
         counts["email_queued" if ok else "email_skipped"] += 1
@@ -62,7 +64,7 @@ async def compose(s: AsyncSession, actor: Actor, recipients: list[User], *, kind
             to, verdict = email_plan(u)
             ok = verdict == "deliverable"
             s.add(Message(workspace_id=actor.workspace_id, ref="pending", kind=kind, channel="email", sender_id=actor.user_id,
-                          recipient_user_id=u.id, email_to=to, subject=subject, body=body,
+                          recipient_user_id=u.id, email_to=to, subject=subject, body=signed,
                           status="queued" if ok else "skipped", status_detail=None if ok else verdict, batch_id=batch,
                           receipt_id=receipt_id))
             counts["email_queued" if ok else "email_skipped"] += 1
@@ -79,7 +81,7 @@ def _send_smtp(to: str, subject: str, body: str) -> str:
     msg["To"] = to
     msg["Subject"] = " ".join(subject.split())[:200]  # header values may not contain newlines
     msg["Message-ID"] = make_msgid(domain="purser.app")
-    msg.set_content(body + "\n\n— Sent by Purser")
+    msg.set_content(body)  # already signed in compose()
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=20) as smtp:
         smtp.login(st.gmail_address, st.gmail_app_password)
         smtp.send_message(msg)

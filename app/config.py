@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     gmail_address: str = ""
     gmail_app_password: str = ""
     email_allowed_recipients: str = ""
+    # Standard email signature. Company defaults to the workspace name; phone/website lines are added when set.
+    signature_company: str = ""
+    signature_phone: str = ""
+    signature_website: str = ""
     # Google Calendar (one organizer account, OAuth refresh token from scripts/google_oauth.py). Creates events with a
     # Meet link; Google emails the invites. Unset (or the Terraform placeholder) = meetings are recorded without a link.
     google_client_id: str = ""

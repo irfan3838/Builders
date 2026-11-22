@@ -95,6 +95,21 @@ async def propose_onboarding(ctx: Ctx, name: str, designation: str, department: 
 
 @function_tool
 @safe_tool
+async def propose_onboarding_documents(ctx: Ctx, name: str, designation: str, start_date: str, personal_email: str,
+                                       department: str | None = None, manager_user_id: int | None = None,
+                                       extra_items: list[str] | None = None) -> dict:
+    """Propose emailing a selected candidate (before their login exists) a formal request for onboarding details and
+    documents: full name, DOB, phone, address, emergency contact, Aadhaar, PAN, photo, bank details, education and
+    previous-employment papers, and originals to carry on day one. The email text and signature are a fixed template;
+    do not draft it. personal_email must be the address the user gave, spelled exactly; never invent one.
+    extra_items: only additional things the user explicitly asked to collect (max 6)."""
+    return await _propose(ctx, "request_onboarding_documents", {
+        "name": name, "designation": designation, "department": department, "start_date": start_date,
+        "personal_email": personal_email, "manager_user_id": manager_user_id, "extra_items": extra_items})
+
+
+@function_tool
+@safe_tool
 async def propose_message(ctx: Ctx, audience: Literal["person", "department", "all"], subject: str, body: str,
                           user_ids: list[int] | None = None, department: str | None = None,
                           channels: list[Literal["inbox", "email"]] | None = None,
@@ -102,7 +117,8 @@ async def propose_message(ctx: Ctx, audience: Literal["person", "department", "a
     """Propose sending a message or announcement. Draft the subject and body yourself in the user's language and
     tone; the preview shows exact text, recipients and channels. channels default to the Purser inbox; add 'email'
     when the user asks for email. Colleagues go in user_ids (resolve with find_people). People outside the company
-    go in external_emails exactly as the user spelled the address; they are emailed (they have no Purser inbox)."""
+    go in external_emails exactly as the user spelled the address; they are emailed (they have no Purser inbox).
+    Do not write a sign-off or signature: emails get the standard company signature automatically."""
     return await _propose(ctx, "send_message", {"audience": audience, "subject": subject, "body": body, "user_ids": user_ids,
                                                 "department": department, "channels": channels or ["inbox"],
                                                 "external_emails": external_emails})
@@ -167,4 +183,5 @@ async def lookup_policy(ctx: Ctx, question: str) -> dict:
 
 
 TOOLS = [find_people, get_leave_balance, list_leave_requests, propose_leave, propose_leave_decision, propose_onboarding,
+         propose_onboarding_documents,
          propose_message, propose_meeting, read_inbox, get_onboarding_status, lookup_policy]
